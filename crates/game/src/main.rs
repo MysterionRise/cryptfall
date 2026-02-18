@@ -218,7 +218,6 @@ impl Game for CryptfallGame {
                 }
             }
         }
-
     }
 }
 
