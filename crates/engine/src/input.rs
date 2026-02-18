@@ -38,21 +38,26 @@ impl InputState {
 
     /// Call at the start of each frame before processing events.
     /// Clears per-frame state and checks for timed-out held keys.
+    /// Zero-allocation: uses a fixed-size stack buffer (max 8 game keys).
     pub fn begin_frame(&mut self) {
         self.pressed.clear();
         self.released.clear();
 
         let now = Instant::now();
-        let timed_out: Vec<GameKey> = self
-            .held
-            .iter()
-            .filter(|(_, last_seen)| now.duration_since(**last_seen).as_millis() > HELD_TIMEOUT_MS)
-            .map(|(key, _)| *key)
-            .collect();
+        let mut timed_out = [None; 8];
+        let mut count = 0;
+        for (&key, &last_seen) in &self.held {
+            if now.duration_since(last_seen).as_millis() > HELD_TIMEOUT_MS
+                && count < timed_out.len()
+            {
+                timed_out[count] = Some(key);
+                count += 1;
+            }
+        }
 
-        for key in timed_out {
-            self.held.remove(&key);
-            self.released.insert(key);
+        for key in timed_out[..count].iter().flatten() {
+            self.held.remove(key);
+            self.released.insert(*key);
         }
     }
 
