@@ -1,3 +1,2 @@
-# solr-operator-example
+# cryptfall
 
-https://solr.apache.org/operator/features.html#solr-cloud
