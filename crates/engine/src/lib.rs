@@ -8,8 +8,9 @@ use std::time::{Duration, Instant};
 use crossterm::{cursor, event, execute, terminal};
 
 pub use color::Color;
+pub use crossterm::event::Event;
 pub use framebuffer::FrameBuffer;
-pub use renderer::Renderer;
+pub use renderer::{RenderStats, Renderer};
 
 const TARGET_FPS: u32 = 30;
 const FRAME_DURATION: Duration = Duration::from_nanos(1_000_000_000 / TARGET_FPS as u64);
@@ -55,13 +56,19 @@ impl Terminal {
         )?;
         let (cols, rows) = terminal::size()?;
         let fb = FrameBuffer::new(cols as usize, rows as usize);
-        let renderer = Renderer::new(cols as usize * rows as usize * 30);
+        let renderer = Renderer::new(cols as usize, rows as usize);
         Ok(Terminal { fb, renderer })
     }
 
     /// Returns (columns, rows).
     pub fn size() -> io::Result<(u16, u16)> {
         terminal::size()
+    }
+
+    /// Handle terminal resize: update framebuffer and renderer dimensions.
+    pub fn handle_resize(&mut self, cols: u16, rows: u16) {
+        self.fb.resize(cols as usize, rows as usize);
+        self.renderer.resize(cols as usize, rows as usize);
     }
 }
 
@@ -71,26 +78,57 @@ impl Drop for Terminal {
     }
 }
 
-/// Runs a game loop at ~30 FPS. The callback receives the framebuffer, renderer,
-/// and current FPS. Return `false` to exit.
+/// Frame information passed to the tick callback.
+pub struct FrameInfo {
+    pub fps: u32,
+    pub cells_redrawn: usize,
+    pub cells_total: usize,
+}
+
+/// Runs a game loop at ~30 FPS. The callback receives the framebuffer, collected
+/// events for this frame, and frame info. Return `false` to exit.
 pub fn run<F>(term: &mut Terminal, mut tick: F)
 where
-    F: FnMut(&mut FrameBuffer, u32) -> bool,
+    F: FnMut(&mut FrameBuffer, &[Event], &FrameInfo) -> bool,
 {
     let mut frame_count: u32 = 0;
     let mut fps: u32 = 0;
     let mut fps_timer = Instant::now();
+    let mut last_stats = RenderStats {
+        cells_redrawn: 0,
+        cells_total: 0,
+    };
+    let mut events: Vec<Event> = Vec::with_capacity(16);
 
     loop {
         let frame_start = Instant::now();
 
+        // Drain all pending events
+        events.clear();
+        while event::poll(Duration::ZERO).unwrap_or(false) {
+            if let Ok(evt) = event::read() {
+                if let event::Event::Resize(cols, rows) = evt {
+                    term.handle_resize(cols, rows);
+                }
+                events.push(evt);
+            }
+        }
+
         term.fb.clear();
 
-        if !tick(&mut term.fb, fps) {
+        let info = FrameInfo {
+            fps,
+            cells_redrawn: last_stats.cells_redrawn,
+            cells_total: last_stats.cells_total,
+        };
+
+        if !tick(&mut term.fb, &events, &info) {
             break;
         }
 
-        let _ = term.renderer.render(&term.fb);
+        if let Ok(stats) = term.renderer.render(&term.fb) {
+            last_stats = stats;
+        }
 
         frame_count += 1;
         let elapsed = fps_timer.elapsed();
