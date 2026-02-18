@@ -3,6 +3,7 @@ pub mod framebuffer;
 pub mod gameloop;
 pub mod input;
 pub mod renderer;
+pub mod sprite;
 pub mod types;
 
 use std::io;
@@ -14,6 +15,7 @@ pub use framebuffer::FrameBuffer;
 pub use gameloop::{FrameInfo, Game};
 pub use input::{GameKey, InputState};
 pub use renderer::{RenderStats, Renderer};
+pub use sprite::SpriteData;
 pub use types::{Transform, Vec2};
 
 /// Performs terminal cleanup. Safe to call multiple times.

@@ -1,4 +1,5 @@
 use crate::color::{Color, DARK_GRAY};
+use crate::sprite::SpriteData;
 
 pub struct FrameBuffer {
     width: usize,
@@ -74,4 +75,104 @@ impl FrameBuffer {
         self.pixels.resize(self.width * self.height, None);
         self.pixels.fill(None);
     }
+
+    /// Blit a sprite at pixel position (px, py).
+    /// Handles clipping for partially off-screen sprites.
+    /// Transparent pixels (None) are skipped.
+    pub fn blit_sprite(&mut self, sprite: &SpriteData, px: i32, py: i32) {
+        let (src_x0, dst_x0, w) = clip_axis(px, sprite.width, self.width);
+        let (src_y0, dst_y0, h) = clip_axis(py, sprite.height, self.height);
+
+        for row in 0..h {
+            let sy = src_y0 + row;
+            let dy = dst_y0 + row;
+            for col in 0..w {
+                let sx = src_x0 + col;
+                if let Some(c) = sprite.pixels[sy * sprite.width + sx] {
+                    self.pixels[dy * self.width + (dst_x0 + col)] = Some(c);
+                }
+            }
+        }
+    }
+
+    /// Blit with horizontal flip (for left-facing sprites).
+    pub fn blit_sprite_flipped(&mut self, sprite: &SpriteData, px: i32, py: i32) {
+        let (src_x0, dst_x0, w) = clip_axis(px, sprite.width, self.width);
+        let (src_y0, dst_y0, h) = clip_axis(py, sprite.height, self.height);
+
+        for row in 0..h {
+            let sy = src_y0 + row;
+            let dy = dst_y0 + row;
+            for col in 0..w {
+                let sx = src_x0 + col;
+                // Mirror: read from the opposite side of the sprite
+                let flipped_sx = sprite.width - 1 - sx;
+                if let Some(c) = sprite.pixels[sy * sprite.width + flipped_sx] {
+                    self.pixels[dy * self.width + (dst_x0 + col)] = Some(c);
+                }
+            }
+        }
+    }
+
+    /// Blit with a color tint (multiply each pixel channel by tint/255).
+    /// Useful for damage flash (red tint) or ghost trail (reduced brightness).
+    pub fn blit_sprite_tinted(&mut self, sprite: &SpriteData, px: i32, py: i32, tint: Color) {
+        let (src_x0, dst_x0, w) = clip_axis(px, sprite.width, self.width);
+        let (src_y0, dst_y0, h) = clip_axis(py, sprite.height, self.height);
+
+        for row in 0..h {
+            let sy = src_y0 + row;
+            let dy = dst_y0 + row;
+            for col in 0..w {
+                let sx = src_x0 + col;
+                if let Some(c) = sprite.pixels[sy * sprite.width + sx] {
+                    let tinted = [
+                        (c[0] as u16 * tint[0] as u16 / 255) as u8,
+                        (c[1] as u16 * tint[1] as u16 / 255) as u8,
+                        (c[2] as u16 * tint[2] as u16 / 255) as u8,
+                    ];
+                    self.pixels[dy * self.width + (dst_x0 + col)] = Some(tinted);
+                }
+            }
+        }
+    }
+
+    /// Blit with horizontal flip and a color tint combined.
+    pub fn blit_sprite_flipped_tinted(
+        &mut self,
+        sprite: &SpriteData,
+        px: i32,
+        py: i32,
+        tint: Color,
+    ) {
+        let (src_x0, dst_x0, w) = clip_axis(px, sprite.width, self.width);
+        let (src_y0, dst_y0, h) = clip_axis(py, sprite.height, self.height);
+
+        for row in 0..h {
+            let sy = src_y0 + row;
+            let dy = dst_y0 + row;
+            for col in 0..w {
+                let sx = src_x0 + col;
+                let flipped_sx = sprite.width - 1 - sx;
+                if let Some(c) = sprite.pixels[sy * sprite.width + flipped_sx] {
+                    let tinted = [
+                        (c[0] as u16 * tint[0] as u16 / 255) as u8,
+                        (c[1] as u16 * tint[1] as u16 / 255) as u8,
+                        (c[2] as u16 * tint[2] as u16 / 255) as u8,
+                    ];
+                    self.pixels[dy * self.width + (dst_x0 + col)] = Some(tinted);
+                }
+            }
+        }
+    }
+}
+
+/// Calculate clipped source and destination ranges for one axis.
+/// Returns (src_start, dst_start, count) — the visible region.
+fn clip_axis(pos: i32, sprite_size: usize, fb_size: usize) -> (usize, usize, usize) {
+    let src_start = if pos < 0 { (-pos) as usize } else { 0 };
+    let dst_start = pos.max(0) as usize;
+    let end = (pos + sprite_size as i32).min(fb_size as i32);
+    let count = (end as usize).saturating_sub(dst_start);
+    (src_start, dst_start, count)
 }
