@@ -1,5 +1,6 @@
 pub mod color;
 pub mod framebuffer;
+pub mod input;
 pub mod renderer;
 
 use std::io;
@@ -10,6 +11,7 @@ use crossterm::{cursor, event, execute, terminal};
 pub use color::Color;
 pub use crossterm::event::Event;
 pub use framebuffer::FrameBuffer;
+pub use input::{GameKey, InputState};
 pub use renderer::{RenderStats, Renderer};
 
 const TARGET_FPS: u32 = 30;
@@ -40,6 +42,7 @@ fn install_panic_hook() {
 pub struct Terminal {
     pub fb: FrameBuffer,
     pub renderer: Renderer,
+    pub input: InputState,
 }
 
 impl Terminal {
@@ -57,7 +60,12 @@ impl Terminal {
         let (cols, rows) = terminal::size()?;
         let fb = FrameBuffer::new(cols as usize, rows as usize);
         let renderer = Renderer::new(cols as usize, rows as usize);
-        Ok(Terminal { fb, renderer })
+        let input = InputState::new();
+        Ok(Terminal {
+            fb,
+            renderer,
+            input,
+        })
     }
 
     /// Returns (columns, rows).
@@ -85,11 +93,11 @@ pub struct FrameInfo {
     pub cells_total: usize,
 }
 
-/// Runs a game loop at ~30 FPS. The callback receives the framebuffer, collected
-/// events for this frame, and frame info. Return `false` to exit.
+/// Runs a game loop at ~30 FPS. The callback receives the framebuffer, input state,
+/// and frame info. Return `false` to exit.
 pub fn run<F>(term: &mut Terminal, mut tick: F)
 where
-    F: FnMut(&mut FrameBuffer, &[Event], &FrameInfo) -> bool,
+    F: FnMut(&mut FrameBuffer, &InputState, &FrameInfo) -> bool,
 {
     let mut frame_count: u32 = 0;
     let mut fps: u32 = 0;
@@ -103,6 +111,9 @@ where
     loop {
         let frame_start = Instant::now();
 
+        // Begin input frame (check for timed-out held keys)
+        term.input.begin_frame();
+
         // Drain all pending events
         events.clear();
         while event::poll(Duration::ZERO).unwrap_or(false) {
@@ -114,6 +125,9 @@ where
             }
         }
 
+        // Feed events into input system
+        term.input.process_events(&events);
+
         term.fb.clear();
 
         let info = FrameInfo {
@@ -122,7 +136,7 @@ where
             cells_total: last_stats.cells_total,
         };
 
-        if !tick(&mut term.fb, &events, &info) {
+        if !tick(&mut term.fb, &term.input, &info) {
             break;
         }
 

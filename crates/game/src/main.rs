@@ -1,65 +1,118 @@
-use crossterm::event::{Event, KeyCode, KeyEvent};
-use engine::{color, FrameBuffer};
+use engine::{color, GameKey, InputState};
+
+const SQ_SIZE: f32 = 6.0;
+const MOVE_SPEED: f32 = 2.0; // pixels per frame
+const DASH_DISTANCE: f32 = 20.0;
 
 fn main() -> std::io::Result<()> {
     let mut terminal = engine::Terminal::new()?;
 
-    let mut sq_x: usize = 10;
-    let mut sq_y: usize = 10;
-    const SQ_SIZE: usize = 6;
+    let mut sq_x: f32 = 10.0;
+    let mut sq_y: f32 = 10.0;
 
-    engine::run(&mut terminal, |fb: &mut FrameBuffer, events, info| {
-        let w = fb.width();
-        let h = fb.height();
+    engine::run(&mut terminal, |fb, input: &InputState, info| {
+        let w = fb.width() as f32;
+        let h = fb.height() as f32;
 
-        // Handle input
-        for evt in events {
-            if let Event::Key(KeyEvent { code, .. }) = evt {
-                match code {
-                    KeyCode::Char('q') => return false,
-                    KeyCode::Up => sq_y = sq_y.saturating_sub(1),
-                    KeyCode::Down => sq_y = (sq_y + 1).min(h.saturating_sub(SQ_SIZE)),
-                    KeyCode::Left => sq_x = sq_x.saturating_sub(1),
-                    KeyCode::Right => sq_x = (sq_x + 1).min(w.saturating_sub(SQ_SIZE)),
-                    _ => {}
-                }
-            }
+        // Quit
+        if input.is_pressed(GameKey::Quit) {
+            return false;
         }
 
+        // Movement
+        let (dx, dy) = input.direction();
+
+        // Dash: jump 20 pixels in current direction
+        if input.is_pressed(GameKey::Dash) && (dx != 0.0 || dy != 0.0) {
+            sq_x += dx * DASH_DISTANCE;
+            sq_y += dy * DASH_DISTANCE;
+        }
+
+        // Smooth movement while held
+        sq_x += dx * MOVE_SPEED;
+        sq_y += dy * MOVE_SPEED;
+
+        // Clamp to bounds
+        sq_x = sq_x.clamp(0.0, (w - SQ_SIZE).max(0.0));
+        sq_y = sq_y.clamp(0.0, (h - SQ_SIZE).max(0.0));
+
         // Draw RGB gradient background
-        for y in 0..h {
-            for x in 0..w {
-                let r = if w > 1 { (x * 255 / (w - 1)) as u8 } else { 0 };
-                let g = if h > 1 { (y * 255 / (h - 1)) as u8 } else { 0 };
+        let fw = fb.width();
+        let fh = fb.height();
+        for y in 0..fh {
+            for x in 0..fw {
+                let r = if fw > 1 {
+                    (x * 255 / (fw - 1)) as u8
+                } else {
+                    0
+                };
+                let g = if fh > 1 {
+                    (y * 255 / (fh - 1)) as u8
+                } else {
+                    0
+                };
                 let b = 80;
                 fb.set_pixel(x, y, [r, g, b]);
             }
         }
 
         // Draw white square
-        fb.fill_rect(sq_x, sq_y, SQ_SIZE, SQ_SIZE, color::WHITE);
+        fb.fill_rect(
+            sq_x as usize,
+            sq_y as usize,
+            SQ_SIZE as usize,
+            SQ_SIZE as usize,
+            color::WHITE,
+        );
 
-        // Draw stats as pixels (write text by coloring a bar at top)
-        // We'll use a simple approach: dark bar at top for readability
-        let bar_h = 2; // 2 pixel rows = 1 terminal row
-        for y in 0..bar_h {
-            for x in 0..w {
+        // HUD: dark bar at top (4 pixel rows = 2 terminal rows)
+        let bar_h = 4;
+        for y in 0..bar_h.min(fh) {
+            for x in 0..fw {
                 fb.set_pixel(x, y, [0, 0, 0]);
             }
         }
 
-        // Encode FPS and cell stats as colored pixel indicators
-        // Green pixels = FPS (1 pixel per FPS unit), Yellow = cells redrawn ratio
-        let fps_pixels = (info.fps as usize).min(w);
+        // Row 0: green bar = FPS
+        let fps_pixels = (info.fps as usize).min(fw);
         for x in 0..fps_pixels {
             fb.set_pixel(x, 0, color::GREEN);
         }
 
-        // Cells redrawn bar (row 1): proportional to redrawn/total
+        // Row 1: yellow bar = cells redrawn ratio
         if info.cells_total > 0 {
-            let ratio_pixels = (info.cells_redrawn * w) / info.cells_total.max(1);
-            for x in 0..ratio_pixels.min(w) {
-                fb.set_pixel(x, 1, [255, 255, 0]); // yellow
+            let ratio_pixels = (info.cells_redrawn * fw) / info.cells_total.max(1);
+            for x in 0..ratio_pixels.min(fw) {
+                fb.set_pixel(x, 1, [255, 255, 0]);
+            }
+        }
+
+        // Row 2: input debug — light up pixels for held keys
+        // Layout: [Up][Down][Left][Right] [Attack][Dash] [Pause]
+        let key_indicators: &[(GameKey, usize, engine::Color)] = &[
+            (GameKey::Up, 0, color::BLUE),
+            (GameKey::Down, 2, color::BLUE),
+            (GameKey::Left, 4, color::BLUE),
+            (GameKey::Right, 6, color::BLUE),
+            (GameKey::Attack, 9, color::RED),
+            (GameKey::Dash, 11, [255, 0, 255]),
+            (GameKey::Pause, 14, [255, 128, 0]),
+        ];
+        for &(key, x_off, held_color) in key_indicators {
+            if x_off + 1 < fw {
+                let c = if input.is_pressed(key) {
+                    color::WHITE // bright flash on press
+                } else if input.is_held(key) {
+                    held_color
+                } else if input.is_released(key) {
+                    [80, 80, 80] // dim on release
+                } else {
+                    [30, 30, 30] // dark = inactive
+                };
+                fb.set_pixel(x_off, 2, c);
+                fb.set_pixel(x_off + 1, 2, c);
+                fb.set_pixel(x_off, 3, c);
+                fb.set_pixel(x_off + 1, 3, c);
             }
         }
 
