@@ -1,22 +1,20 @@
+mod player;
 mod sprites;
 
-use engine::{color, Color, FrameBuffer, FrameInfo, Game, GameKey, InputState, Transform};
+use engine::{color, Color, FrameBuffer, FrameInfo, Game, GameKey, InputState};
+use player::Player;
 
-const MOVE_SPEED: f32 = 60.0; // pixels per second
-const DASH_DISTANCE: f32 = 20.0;
 const FLASH_FRAMES: u32 = 5;
 
 struct CryptfallGame {
-    transform: Transform,
-    facing_right: bool,
-    flash_timer: u32, // frames remaining for red tint
+    player: Player,
+    flash_timer: u32,
 }
 
 impl CryptfallGame {
     fn new() -> Self {
         Self {
-            transform: Transform::new(40.0, 30.0),
-            facing_right: true,
+            player: Player::new(40.0, 30.0),
             flash_timer: 0,
         }
     }
@@ -28,22 +26,7 @@ impl Game for CryptfallGame {
             return false;
         }
 
-        self.transform.commit();
-
-        let (dx, dy) = input.direction();
-
-        // Update facing direction
-        if dx > 0.0 {
-            self.facing_right = true;
-        } else if dx < 0.0 {
-            self.facing_right = false;
-        }
-
-        // Dash
-        if input.is_pressed(GameKey::Dash) && (dx != 0.0 || dy != 0.0) {
-            self.transform.position.x += dx * DASH_DISTANCE;
-            self.transform.position.y += dy * DASH_DISTANCE;
-        }
+        self.player.update(input, dt);
 
         // Attack: trigger red flash
         if input.is_pressed(GameKey::Attack) {
@@ -53,37 +36,12 @@ impl Game for CryptfallGame {
             self.flash_timer -= 1;
         }
 
-        // Apply velocity
-        let dt = dt as f32;
-        self.transform.position.x += dx * MOVE_SPEED * dt;
-        self.transform.position.y += dy * MOVE_SPEED * dt;
-
         true
     }
 
     fn render(&mut self, fb: &mut FrameBuffer, info: &FrameInfo, alpha: f32) {
         let fw = fb.width();
         let fh = fb.height();
-        let w = fw as f32;
-        let h = fh as f32;
-
-        let sprite = &sprites::PLAYER_TEST;
-
-        // Clamp position
-        self.transform.position.x = self
-            .transform
-            .position
-            .x
-            .clamp(0.0, (w - sprite.width as f32).max(0.0));
-        self.transform.position.y = self
-            .transform
-            .position
-            .y
-            .clamp(0.0, (h - sprite.height as f32).max(0.0));
-
-        let pos = self.transform.interpolated(alpha);
-        let px = pos.x.clamp(0.0, (w - sprite.width as f32).max(0.0)) as i32;
-        let py = pos.y.clamp(0.0, (h - sprite.height as f32).max(0.0)) as i32;
 
         // --- Draw gradient background ---
         for y in 0..fh {
@@ -102,15 +60,11 @@ impl Game for CryptfallGame {
             }
         }
 
-        // --- Draw sprite ---
-        let tinting = self.flash_timer > 0;
-        let tint: Color = [255, 80, 80]; // red flash
-
-        match (self.facing_right, tinting) {
-            (true, false) => fb.blit_sprite(sprite, px, py),
-            (false, false) => fb.blit_sprite_flipped(sprite, px, py),
-            (true, true) => fb.blit_sprite_tinted(sprite, px, py, tint),
-            (false, true) => fb.blit_sprite_flipped_tinted(sprite, px, py, tint),
+        // --- Draw player ---
+        if self.flash_timer > 0 {
+            self.player.render_tinted(fb, alpha, [255, 80, 80]);
+        } else {
+            self.player.render(fb, alpha);
         }
 
         // --- HUD ---

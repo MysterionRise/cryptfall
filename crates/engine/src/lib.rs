@@ -1,3 +1,4 @@
+pub mod animation;
 pub mod color;
 pub mod framebuffer;
 pub mod gameloop;
@@ -10,6 +11,7 @@ use std::io;
 
 use crossterm::{cursor, event, execute, terminal};
 
+pub use animation::{AnimationData, AnimationPlayer};
 pub use color::Color;
 pub use framebuffer::FrameBuffer;
 pub use gameloop::{FrameInfo, Game};
