@@ -1,24 +1,24 @@
-use std::io::{self, Write};
 use std::time::Duration;
 
-use crossterm::{cursor, event, execute, style::Print, terminal};
+use crossterm::event;
+use engine::FrameBuffer;
 
-fn main() -> io::Result<()> {
-    let _terminal = engine::Terminal::new()?;
+fn main() -> std::io::Result<()> {
+    let mut terminal = engine::Terminal::new()?;
 
-    engine::run(|fps| {
-        let mut stdout = io::stdout();
+    engine::run(&mut terminal, |fb: &mut FrameBuffer, _fps| {
+        let w = fb.width();
+        let h = fb.height();
 
-        // Clear and draw FPS display
-        let _ = execute!(
-            stdout,
-            terminal::Clear(terminal::ClearType::All),
-            cursor::MoveTo(0, 0),
-            Print(format!("Cryptfall Engine - {} FPS", fps)),
-            cursor::MoveTo(0, 1),
-            Print("Press 'q' to quit"),
-        );
-        let _ = stdout.flush();
+        // Draw RGB gradient: red varies across X, green varies across Y
+        for y in 0..h {
+            for x in 0..w {
+                let r = if w > 1 { (x * 255 / (w - 1)) as u8 } else { 0 };
+                let g = if h > 1 { (y * 255 / (h - 1)) as u8 } else { 0 };
+                let b = 80;
+                fb.set_pixel(x, y, [r, g, b]);
+            }
+        }
 
         // Non-blocking input poll
         if event::poll(Duration::ZERO).unwrap_or(false) {

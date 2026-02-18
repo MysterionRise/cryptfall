@@ -1,7 +1,15 @@
+pub mod color;
+pub mod framebuffer;
+pub mod renderer;
+
 use std::io;
 use std::time::{Duration, Instant};
 
 use crossterm::{cursor, event, execute, terminal};
+
+pub use color::Color;
+pub use framebuffer::FrameBuffer;
+pub use renderer::Renderer;
 
 const TARGET_FPS: u32 = 30;
 const FRAME_DURATION: Duration = Duration::from_nanos(1_000_000_000 / TARGET_FPS as u64);
@@ -28,7 +36,10 @@ fn install_panic_hook() {
 }
 
 /// Manages raw-mode terminal lifetime. Restores terminal state on drop.
-pub struct Terminal;
+pub struct Terminal {
+    pub fb: FrameBuffer,
+    pub renderer: Renderer,
+}
 
 impl Terminal {
     /// Enter raw mode, switch to alternate screen, hide cursor, enable mouse capture.
@@ -42,7 +53,10 @@ impl Terminal {
             cursor::Hide,
             event::EnableMouseCapture,
         )?;
-        Ok(Terminal)
+        let (cols, rows) = terminal::size()?;
+        let fb = FrameBuffer::new(cols as usize, rows as usize);
+        let renderer = Renderer::new(cols as usize * rows as usize * 30);
+        Ok(Terminal { fb, renderer })
     }
 
     /// Returns (columns, rows).
@@ -57,11 +71,11 @@ impl Drop for Terminal {
     }
 }
 
-/// Runs a game loop at ~30 FPS. The callback receives the current FPS and returns
-/// `false` to exit.
-pub fn run<F>(mut tick: F)
+/// Runs a game loop at ~30 FPS. The callback receives the framebuffer, renderer,
+/// and current FPS. Return `false` to exit.
+pub fn run<F>(term: &mut Terminal, mut tick: F)
 where
-    F: FnMut(u32) -> bool,
+    F: FnMut(&mut FrameBuffer, u32) -> bool,
 {
     let mut frame_count: u32 = 0;
     let mut fps: u32 = 0;
@@ -70,9 +84,13 @@ where
     loop {
         let frame_start = Instant::now();
 
-        if !tick(fps) {
+        term.fb.clear();
+
+        if !tick(&mut term.fb, fps) {
             break;
         }
+
+        let _ = term.renderer.render(&term.fb);
 
         frame_count += 1;
         let elapsed = fps_timer.elapsed();
