@@ -214,6 +214,9 @@ fn clip_axis(pos: i32, sprite_size: usize, fb_size: usize) -> (usize, usize, usi
     let src_start = if pos < 0 { (-pos) as usize } else { 0 };
     let dst_start = pos.max(0) as usize;
     let end = (pos + sprite_size as i32).min(fb_size as i32);
+    if end <= 0 {
+        return (0, 0, 0);
+    }
     let count = (end as usize).saturating_sub(dst_start);
     (src_start, dst_start, count)
 }
