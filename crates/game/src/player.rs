@@ -10,11 +10,11 @@ const PLAYER_SPEED: f32 = 60.0; // pixels per second
 const DASH_SPEED: f32 = 200.0; // pixels per second
 const DASH_DURATION: f32 = 0.15; // seconds
 
-// Collision box: 6×4 pixels at the feet of the 8×12 sprite
-const COLLISION_W: f32 = 6.0;
+// Collision box: 8×4 pixels at the feet of the 10×14 sprite
+const COLLISION_W: f32 = 8.0;
 const COLLISION_H: f32 = 4.0;
-const COLLISION_OFFSET_X: f32 = 1.0; // (8 - 6) / 2
-const COLLISION_OFFSET_Y: f32 = 8.0; // 12 - 4
+const COLLISION_OFFSET_X: f32 = 1.0; // (10 - 8) / 2
+const COLLISION_OFFSET_Y: f32 = 10.0; // 14 - 4
 
 pub enum PlayerState {
     Idle,
@@ -48,8 +48,8 @@ impl Player {
     /// Player center in world pixels (for camera following).
     pub fn center(&self) -> (f32, f32) {
         (
-            self.transform.position.x + 4.0,
-            self.transform.position.y + 6.0,
+            self.transform.position.x + 5.0,
+            self.transform.position.y + 7.0,
         )
     }
 
