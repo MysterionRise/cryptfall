@@ -137,6 +137,47 @@ impl FrameBuffer {
         }
     }
 
+    /// Blit all non-transparent pixels as a solid color (for white hit flash).
+    pub fn blit_sprite_solid(&mut self, sprite: &SpriteData, px: i32, py: i32, color: Color) {
+        let (src_x0, dst_x0, w) = clip_axis(px, sprite.width, self.width);
+        let (src_y0, dst_y0, h) = clip_axis(py, sprite.height, self.height);
+
+        for row in 0..h {
+            let sy = src_y0 + row;
+            let dy = dst_y0 + row;
+            for col in 0..w {
+                let sx = src_x0 + col;
+                if sprite.pixels[sy * sprite.width + sx].is_some() {
+                    self.pixels[dy * self.width + (dst_x0 + col)] = Some(color);
+                }
+            }
+        }
+    }
+
+    /// Blit with horizontal flip, all non-transparent pixels as a solid color.
+    pub fn blit_sprite_flipped_solid(
+        &mut self,
+        sprite: &SpriteData,
+        px: i32,
+        py: i32,
+        color: Color,
+    ) {
+        let (src_x0, dst_x0, w) = clip_axis(px, sprite.width, self.width);
+        let (src_y0, dst_y0, h) = clip_axis(py, sprite.height, self.height);
+
+        for row in 0..h {
+            let sy = src_y0 + row;
+            let dy = dst_y0 + row;
+            for col in 0..w {
+                let sx = src_x0 + col;
+                let flipped_sx = sprite.width - 1 - sx;
+                if sprite.pixels[sy * sprite.width + flipped_sx].is_some() {
+                    self.pixels[dy * self.width + (dst_x0 + col)] = Some(color);
+                }
+            }
+        }
+    }
+
     /// Blit with horizontal flip and a color tint combined.
     pub fn blit_sprite_flipped_tinted(
         &mut self,

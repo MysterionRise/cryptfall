@@ -77,4 +77,9 @@ impl AnimationPlayer {
     pub fn is_flipped(&self) -> bool {
         self.flipped
     }
+
+    /// Get the current frame index within the animation.
+    pub fn current_frame(&self) -> usize {
+        self.current_frame
+    }
 }

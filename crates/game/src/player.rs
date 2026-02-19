@@ -1,4 +1,5 @@
 use engine::animation::AnimationPlayer;
+use engine::collision::AABB;
 use engine::input::{GameKey, InputState};
 use engine::tilemap::TileMap;
 use engine::types::Transform;
@@ -16,6 +17,12 @@ const COLLISION_H: f32 = 4.0;
 const COLLISION_OFFSET_X: f32 = 1.0; // (10 - 8) / 2
 const COLLISION_OFFSET_Y: f32 = 10.0; // 14 - 4
 
+const ATTACK_COOLDOWN: f32 = 0.3;
+const ATTACK_ACTIVE_FRAME: usize = 2;
+const PLAYER_HURTBOX: AABB = AABB::new(2.0, 3.0, 6.0, 8.0);
+const ATTACK_HITBOX_RIGHT: AABB = AABB::new(8.0, 3.0, 10.0, 8.0);
+const ATTACK_HITBOX_LEFT: AABB = AABB::new(-10.0, 3.0, 10.0, 8.0);
+
 pub enum PlayerState {
     Idle,
     Walking,
@@ -31,6 +38,9 @@ pub struct Player {
     dash_timer: f32,
     dash_dx: f32,
     dash_dy: f32,
+    pub attack_cooldown: f32,
+    pub attack_active: bool,
+    pub invincible_timer: f32,
 }
 
 impl Player {
@@ -43,6 +53,9 @@ impl Player {
             dash_timer: 0.0,
             dash_dx: 0.0,
             dash_dy: 0.0,
+            attack_cooldown: 0.0,
+            attack_active: false,
+            invincible_timer: 0.0,
         }
     }
 
@@ -84,6 +97,14 @@ impl Player {
 
         let dt_f32 = dt as f32;
 
+        // Tick cooldowns
+        if self.attack_cooldown > 0.0 {
+            self.attack_cooldown -= dt_f32;
+        }
+        if self.invincible_timer > 0.0 {
+            self.invincible_timer -= dt_f32;
+        }
+
         // Update facing direction (not during attack — keep facing from when attack started)
         if !matches!(self.state, PlayerState::Attacking) {
             if dx > 0.0 {
@@ -124,9 +145,10 @@ impl Player {
                 (mx, my)
             }
             _ => {
-                // Attack takes priority over dash
-                if attack {
+                // Attack takes priority over dash (only if cooldown expired)
+                if attack && self.attack_cooldown <= 0.0 {
                     self.state = PlayerState::Attacking;
+                    self.attack_cooldown = ATTACK_COOLDOWN;
                     self.animation.play(&sprites::ATTACK_ANIM);
                     (0.0, 0.0)
                 } else if dash && (dx != 0.0 || dy != 0.0) {
@@ -153,6 +175,30 @@ impl Player {
 
         self.animation.set_flipped(!self.facing_right);
         self.animation.update(dt);
+
+        // Track whether the attack hitbox is active this frame
+        self.attack_active = matches!(self.state, PlayerState::Attacking)
+            && self.animation.current_frame() == ATTACK_ACTIVE_FRAME;
+    }
+
+    /// Returns the world-space attack hitbox, only when the active frame is live.
+    pub fn attack_hitbox(&self) -> Option<AABB> {
+        if !self.attack_active {
+            return None;
+        }
+        let px = self.transform.position.x;
+        let py = self.transform.position.y;
+        if self.facing_right {
+            Some(ATTACK_HITBOX_RIGHT.at(px, py))
+        } else {
+            Some(ATTACK_HITBOX_LEFT.at(px, py))
+        }
+    }
+
+    /// Player hurtbox in world coordinates.
+    #[allow(dead_code)]
+    pub fn world_hurtbox(&self) -> AABB {
+        PLAYER_HURTBOX.at(self.transform.position.x, self.transform.position.y)
     }
 
     /// Try to move by (move_x, move_y), checking X and Y independently for wall sliding.

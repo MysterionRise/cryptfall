@@ -1,5 +1,6 @@
 pub mod animation;
 pub mod camera;
+pub mod collision;
 pub mod color;
 pub mod framebuffer;
 pub mod gameloop;
@@ -15,6 +16,7 @@ use crossterm::{cursor, event, execute, terminal};
 
 pub use animation::{AnimationData, AnimationPlayer};
 pub use camera::Camera;
+pub use collision::AABB;
 pub use color::Color;
 pub use framebuffer::FrameBuffer;
 pub use gameloop::{FrameInfo, Game};

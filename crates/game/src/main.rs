@@ -1,7 +1,9 @@
+mod enemy;
 mod player;
 mod sprites;
 mod tiles;
 
+use enemy::Enemy;
 use engine::{
     color, render_tilemap, Camera, Color, FrameBuffer, FrameInfo, Game, GameKey, InputState,
     TileMap, TileType,
@@ -85,6 +87,7 @@ const FRAC_1_SQRT_2: f32 = std::f32::consts::FRAC_1_SQRT_2;
 
 struct CryptfallGame {
     player: Player,
+    enemies: Vec<Enemy>,
     tilemap: TileMap,
     camera: Camera,
     flash_timer: u32,
@@ -104,8 +107,15 @@ impl CryptfallGame {
         camera.snap();
         camera.clamp_to_bounds(tilemap.pixel_width() as f32, tilemap.pixel_height() as f32);
 
+        let enemies = vec![
+            Enemy::new(80.0, 60.0),
+            Enemy::new(160.0, 120.0),
+            Enemy::new(120.0, 150.0),
+        ];
+
         Self {
             player,
+            enemies,
             tilemap,
             camera,
             flash_timer: 0,
@@ -140,6 +150,8 @@ impl Game for CryptfallGame {
             self.idle_timer += dt_f32;
         }
 
+        let was_attacking = matches!(self.player.state, player::PlayerState::Attacking);
+
         if self.demo.is_some() || self.idle_timer >= DEMO_IDLE_THRESHOLD {
             // Enter or continue demo mode
             let demo = self.demo.get_or_insert_with(DemoState::new);
@@ -148,7 +160,7 @@ impl Game for CryptfallGame {
                 .update_with_input(dx, dy, attack, dash, dt, &self.tilemap);
 
             // Trigger flash on demo attacks
-            if attack {
+            if attack && self.player.attack_cooldown > 0.0 {
                 self.flash_timer = FLASH_FRAMES;
                 self.camera.shake(3.0);
             }
@@ -159,8 +171,8 @@ impl Game for CryptfallGame {
             // Normal play
             self.player.update(input, dt, &self.tilemap);
 
-            // Attack: trigger red flash + small screen shake
-            if input.is_pressed(GameKey::Attack) {
+            // Attack: trigger red flash + small screen shake (only if cooldown allows)
+            if input.is_pressed(GameKey::Attack) && self.player.attack_cooldown > 0.0 {
                 self.flash_timer = FLASH_FRAMES;
                 self.camera.shake(3.0);
             }
@@ -169,6 +181,44 @@ impl Game for CryptfallGame {
             if input.is_pressed(GameKey::Dash) {
                 self.camera.shake(6.0);
             }
+        }
+
+        // Reset hit tracking when player starts a new attack
+        let is_attacking = matches!(self.player.state, player::PlayerState::Attacking);
+        if is_attacking && !was_attacking {
+            for enemy in &mut self.enemies {
+                enemy.hit_this_attack = false;
+            }
+        }
+
+        // Combat: check player attack hitbox vs enemy hurtboxes
+        if let Some(attack_hb) = self.player.attack_hitbox() {
+            let (pcx, pcy) = self.player.center();
+            for enemy in &mut self.enemies {
+                if !enemy.alive || enemy.hit_this_attack {
+                    continue;
+                }
+                let hurtbox = enemy.world_hurtbox();
+                if attack_hb.overlaps(&hurtbox) {
+                    // Calculate knockback direction: player center → enemy center
+                    let (ecx, ecy) = hurtbox.center();
+                    let dx = ecx - pcx;
+                    let dy = ecy - pcy;
+                    let len = (dx * dx + dy * dy).sqrt().max(0.01);
+                    let kb_strength = 4.0;
+                    let kb_dx = dx / len * kb_strength;
+                    let kb_dy = dy / len * kb_strength;
+
+                    enemy.take_damage(1, kb_dx, kb_dy, &self.tilemap);
+                    enemy.hit_this_attack = true;
+                    self.camera.shake(2.5);
+                }
+            }
+        }
+
+        // Update all enemies
+        for enemy in &mut self.enemies {
+            enemy.update(dt);
         }
 
         if self.flash_timer > 0 {
@@ -199,6 +249,11 @@ impl Game for CryptfallGame {
 
         // --- Draw tile map ---
         render_tilemap(fb, &self.tilemap, tiles::tile_sprite, cam_x, cam_y);
+
+        // --- Draw enemies (between tilemap and player) ---
+        for enemy in &self.enemies {
+            enemy.render(fb, alpha, cam_x, cam_y);
+        }
 
         // --- Draw player ---
         // Determine tint: attack flash (red) takes priority over dash i-frames (blue)
