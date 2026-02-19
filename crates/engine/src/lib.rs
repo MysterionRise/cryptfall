@@ -5,6 +5,7 @@ pub mod gameloop;
 pub mod input;
 pub mod renderer;
 pub mod sprite;
+pub mod tilemap;
 pub mod types;
 
 use std::io;
@@ -18,6 +19,7 @@ pub use gameloop::{FrameInfo, Game};
 pub use input::{GameKey, InputState};
 pub use renderer::{RenderStats, Renderer};
 pub use sprite::SpriteData;
+pub use tilemap::{render_tilemap, TileMap, TileType, TILE_SIZE};
 pub use types::{Transform, Vec2};
 
 /// Performs terminal cleanup. Safe to call multiple times.

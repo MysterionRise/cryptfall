@@ -1,20 +1,27 @@
 mod player;
 mod sprites;
+mod tiles;
 
-use engine::{color, Color, FrameBuffer, FrameInfo, Game, GameKey, InputState};
+use engine::{color, render_tilemap, Color, FrameBuffer, FrameInfo, Game, GameKey, InputState};
+use engine::{TileMap, TileType};
 use player::Player;
 
 const FLASH_FRAMES: u32 = 5;
 
 struct CryptfallGame {
     player: Player,
+    tilemap: TileMap,
     flash_timer: u32,
 }
 
 impl CryptfallGame {
     fn new() -> Self {
+        let tilemap = create_test_room();
+        // Spawn player near center of the room (tile 7,5 → pixel 56,40)
+        let player = Player::new(56.0, 40.0);
         Self {
-            player: Player::new(40.0, 30.0),
+            player,
+            tilemap,
             flash_timer: 0,
         }
     }
@@ -26,7 +33,7 @@ impl Game for CryptfallGame {
             return false;
         }
 
-        self.player.update(input, dt);
+        self.player.update(input, dt, &self.tilemap);
 
         // Attack: trigger red flash
         if input.is_pressed(GameKey::Attack) {
@@ -43,28 +50,19 @@ impl Game for CryptfallGame {
         let fw = fb.width();
         let fh = fb.height();
 
-        // --- Draw gradient background ---
-        for y in 0..fh {
-            for x in 0..fw {
-                let r = if fw > 1 {
-                    (x * 255 / (fw - 1)) as u8
-                } else {
-                    0
-                };
-                let g = if fh > 1 {
-                    (y * 255 / (fh - 1)) as u8
-                } else {
-                    0
-                };
-                fb.set_pixel(x, y, [r, g, 80]);
-            }
-        }
+        // Camera is static for now
+        let cam_x = 0;
+        let cam_y = 0;
+
+        // --- Draw tile map ---
+        render_tilemap(fb, &self.tilemap, tiles::tile_sprite, cam_x, cam_y);
 
         // --- Draw player ---
         if self.flash_timer > 0 {
-            self.player.render_tinted(fb, alpha, [255, 80, 80]);
+            self.player
+                .render_tinted(fb, alpha, cam_x, cam_y, [255, 80, 80]);
         } else {
-            self.player.render(fb, alpha);
+            self.player.render(fb, alpha, cam_x, cam_y);
         }
 
         // --- HUD ---
@@ -100,6 +98,46 @@ impl Game for CryptfallGame {
         draw_timing_bar(fb, 2, info.input_us, [0, 255, 255]);
         draw_timing_bar(fb, 3, info.render_us, [255, 80, 80]);
     }
+}
+
+/// Create the 15×12 test room.
+fn create_test_room() -> TileMap {
+    let layout = [
+        "WWWWWWWWWWWWWWW",
+        "W.............W",
+        "W.............W",
+        "W.............W",
+        "W.............W",
+        "W......W......W",
+        "W......W......W",
+        "W.............W",
+        "W.............W",
+        "W.............W",
+        "W.............W",
+        "WWWWWWWWWWWWWWW",
+    ];
+    let height = layout.len();
+    let width = layout[0].len();
+    let mut map = TileMap::new(width, height);
+
+    for (y, row) in layout.iter().enumerate() {
+        for (x, ch) in row.chars().enumerate() {
+            if ch == 'W' {
+                map.set(x, y, TileType::Wall);
+            }
+        }
+    }
+
+    // Post-process: Wall tiles with floor below become WallTop (visible ledge)
+    for y in 0..height {
+        for x in 0..width {
+            if map.get(x, y) == TileType::Wall && y + 1 < height && !map.is_solid(x, y + 1) {
+                map.set(x, y, TileType::WallTop);
+            }
+        }
+    }
+
+    map
 }
 
 fn main() -> std::io::Result<()> {
