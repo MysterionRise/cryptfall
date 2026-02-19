@@ -44,10 +44,28 @@ impl InputState {
         self.released.clear();
 
         let now = Instant::now();
+
+        // Terminals only send key repeats for one key at a time, so when
+        // holding two directional keys simultaneously, the first key stops
+        // getting events and would time out. Fix: use the most recent
+        // directional key timestamp for all held directional keys. This
+        // keeps both alive as long as any direction is actively receiving
+        // events.
+        let dir_keys = [GameKey::Up, GameKey::Down, GameKey::Left, GameKey::Right];
+        let latest_dir_time = dir_keys
+            .iter()
+            .filter_map(|k| self.held.get(k).copied())
+            .max();
+
         let mut timed_out = [None; 8];
         let mut count = 0;
         for (&key, &last_seen) in &self.held {
-            if now.duration_since(last_seen).as_millis() > HELD_TIMEOUT_MS
+            let effective_time = if dir_keys.contains(&key) {
+                latest_dir_time.unwrap_or(last_seen)
+            } else {
+                last_seen
+            };
+            if now.duration_since(effective_time).as_millis() > HELD_TIMEOUT_MS
                 && count < timed_out.len()
             {
                 timed_out[count] = Some(key);
