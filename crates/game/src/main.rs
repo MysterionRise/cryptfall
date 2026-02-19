@@ -95,8 +95,8 @@ struct CryptfallGame {
 impl CryptfallGame {
     fn new() -> Self {
         let tilemap = create_test_room();
-        // Spawn player near center of 30×25 room (pixel 116, 94)
-        let player = Player::new(116.0, 94.0);
+        // Spawn player near center of 30×25 room (on open floor, row 12)
+        let player = Player::new(120.0, 88.0);
 
         let mut camera = Camera::new(80, 48);
         let (cx, cy) = player.center();
