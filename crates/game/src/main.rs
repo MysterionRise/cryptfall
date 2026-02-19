@@ -2,8 +2,10 @@ mod player;
 mod sprites;
 mod tiles;
 
-use engine::{color, render_tilemap, Color, FrameBuffer, FrameInfo, Game, GameKey, InputState};
-use engine::{TileMap, TileType};
+use engine::{
+    color, render_tilemap, Camera, Color, FrameBuffer, FrameInfo, Game, GameKey, InputState,
+    TileMap, TileType,
+};
 use player::Player;
 
 const FLASH_FRAMES: u32 = 5;
@@ -11,17 +13,26 @@ const FLASH_FRAMES: u32 = 5;
 struct CryptfallGame {
     player: Player,
     tilemap: TileMap,
+    camera: Camera,
     flash_timer: u32,
 }
 
 impl CryptfallGame {
     fn new() -> Self {
         let tilemap = create_test_room();
-        // Spawn player near center of the room (tile 7,5 → pixel 56,40)
-        let player = Player::new(56.0, 40.0);
+        // Spawn player near center of 30×25 room (pixel 116, 94)
+        let player = Player::new(116.0, 94.0);
+
+        let mut camera = Camera::new(80, 48);
+        let (cx, cy) = player.center();
+        camera.follow(cx, cy);
+        camera.snap();
+        camera.clamp_to_bounds(tilemap.pixel_width() as f32, tilemap.pixel_height() as f32);
+
         Self {
             player,
             tilemap,
+            camera,
             flash_timer: 0,
         }
     }
@@ -35,12 +46,27 @@ impl Game for CryptfallGame {
 
         self.player.update(input, dt, &self.tilemap);
 
-        // Attack: trigger red flash
+        // Camera follows player center
+        let (cx, cy) = self.player.center();
+        self.camera.follow(cx, cy);
+        self.camera.update(dt);
+        self.camera.clamp_to_bounds(
+            self.tilemap.pixel_width() as f32,
+            self.tilemap.pixel_height() as f32,
+        );
+
+        // Attack: trigger red flash + small screen shake
         if input.is_pressed(GameKey::Attack) {
             self.flash_timer = FLASH_FRAMES;
+            self.camera.shake(3.0);
         }
         if self.flash_timer > 0 {
             self.flash_timer -= 1;
+        }
+
+        // Dash: trigger bigger screen shake
+        if input.is_pressed(GameKey::Dash) {
+            self.camera.shake(6.0);
         }
 
         true
@@ -50,9 +76,11 @@ impl Game for CryptfallGame {
         let fw = fb.width();
         let fh = fb.height();
 
-        // Camera is static for now
-        let cam_x = 0;
-        let cam_y = 0;
+        // Update camera viewport to match current framebuffer
+        self.camera.viewport_w = fw;
+        self.camera.viewport_h = fh;
+
+        let (cam_x, cam_y) = self.camera.offset();
 
         // --- Draw tile map ---
         render_tilemap(fb, &self.tilemap, tiles::tile_sprite, cam_x, cam_y);
@@ -65,7 +93,7 @@ impl Game for CryptfallGame {
             self.player.render(fb, alpha, cam_x, cam_y);
         }
 
-        // --- HUD ---
+        // --- HUD (not affected by camera/shake) ---
         let bar_h = 4;
         for y in 0..bar_h.min(fh) {
             for x in 0..fw {
@@ -100,21 +128,35 @@ impl Game for CryptfallGame {
     }
 }
 
-/// Create the 15×12 test room.
+/// Create a 30×25 test room with interior walls and pillars.
+#[rustfmt::skip]
 fn create_test_room() -> TileMap {
     let layout = [
-        "WWWWWWWWWWWWWWW",
-        "W.............W",
-        "W.............W",
-        "W.............W",
-        "W.............W",
-        "W......W......W",
-        "W......W......W",
-        "W.............W",
-        "W.............W",
-        "W.............W",
-        "W.............W",
-        "WWWWWWWWWWWWWWW",
+        "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+        "W............................W",
+        "W............................W",
+        "W....WWWW......WWWW..........W",
+        "W....W..........W............W",
+        "W....W..........W............W",
+        "W................W...........W",
+        "W............................W",
+        "W............................W",
+        "W........WW..................W",
+        "W........WW..................W",
+        "W............................W",
+        "W............................W",
+        "W...........WWWWWW...........W",
+        "W............................W",
+        "W............................W",
+        "W..WW....................WW..W",
+        "W..WW....................WW..W",
+        "W............................W",
+        "W............................W",
+        "W............................W",
+        "W............................W",
+        "W............................W",
+        "W............................W",
+        "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
     ];
     let height = layout.len();
     let width = layout[0].len();

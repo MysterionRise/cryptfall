@@ -45,6 +45,14 @@ impl Player {
         }
     }
 
+    /// Player center in world pixels (for camera following).
+    pub fn center(&self) -> (f32, f32) {
+        (
+            self.transform.position.x + 4.0,
+            self.transform.position.y + 6.0,
+        )
+    }
+
     pub fn update(&mut self, input: &InputState, dt: f64, tilemap: &TileMap) {
         self.transform.commit();
 
