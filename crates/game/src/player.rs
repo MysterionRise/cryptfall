@@ -20,6 +20,7 @@ pub enum PlayerState {
     Idle,
     Walking,
     Dashing,
+    Attacking,
 }
 
 pub struct Player {
@@ -53,21 +54,60 @@ impl Player {
         )
     }
 
+    pub fn is_dashing(&self) -> bool {
+        matches!(self.state, PlayerState::Dashing)
+    }
+
+    #[allow(dead_code)]
+    pub fn is_attacking(&self) -> bool {
+        matches!(self.state, PlayerState::Attacking)
+    }
+
     pub fn update(&mut self, input: &InputState, dt: f64, tilemap: &TileMap) {
+        let (dx, dy) = input.direction();
+        let attack = input.is_pressed(GameKey::Attack);
+        let dash = input.is_pressed(GameKey::Dash);
+        self.update_with_input(dx, dy, attack, dash, dt, tilemap);
+    }
+
+    /// Core update logic with explicit inputs (used by both normal play and demo mode).
+    pub fn update_with_input(
+        &mut self,
+        dx: f32,
+        dy: f32,
+        attack: bool,
+        dash: bool,
+        dt: f64,
+        tilemap: &TileMap,
+    ) {
         self.transform.commit();
 
         let dt_f32 = dt as f32;
-        let (dx, dy) = input.direction();
 
-        // Update facing direction
-        if dx > 0.0 {
-            self.facing_right = true;
-        } else if dx < 0.0 {
-            self.facing_right = false;
+        // Update facing direction (not during attack — keep facing from when attack started)
+        if !matches!(self.state, PlayerState::Attacking) {
+            if dx > 0.0 {
+                self.facing_right = true;
+            } else if dx < 0.0 {
+                self.facing_right = false;
+            }
         }
 
         // Determine movement based on state
         let (move_x, move_y) = match self.state {
+            PlayerState::Attacking => {
+                // Locked in place during attack; wait for animation to finish
+                if self.animation.is_finished() {
+                    if dx != 0.0 || dy != 0.0 {
+                        self.state = PlayerState::Walking;
+                        self.animation.play(&sprites::WALK_ANIM);
+                    } else {
+                        self.state = PlayerState::Idle;
+                        self.animation.play(&sprites::IDLE_ANIM);
+                    }
+                }
+                (0.0, 0.0)
+            }
             PlayerState::Dashing => {
                 self.dash_timer -= dt_f32;
                 let mx = self.dash_dx * DASH_SPEED * dt_f32;
@@ -84,7 +124,12 @@ impl Player {
                 (mx, my)
             }
             _ => {
-                if input.is_pressed(GameKey::Dash) && (dx != 0.0 || dy != 0.0) {
+                // Attack takes priority over dash
+                if attack {
+                    self.state = PlayerState::Attacking;
+                    self.animation.play(&sprites::ATTACK_ANIM);
+                    (0.0, 0.0)
+                } else if dash && (dx != 0.0 || dy != 0.0) {
                     self.state = PlayerState::Dashing;
                     self.dash_timer = DASH_DURATION;
                     self.dash_dx = dx;
