@@ -4,6 +4,8 @@ const REPOSITION_SPEED: f32 = 35.0;
 const AIM_DURATION: f32 = 0.6;
 const SHOOT_COOLDOWN: f32 = 1.2;
 const STAGGER_DURATION: f32 = 0.3;
+const AIM_CANCEL_DISTANCE: f32 = 28.0;
+const MAX_AIM_RANGE: f32 = 120.0;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum GhostState {
@@ -47,6 +49,7 @@ impl GhostAI {
         (self.rng_state >> 16) as f32 / 65536.0
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update(
         &mut self,
         dt: f32,
@@ -109,11 +112,15 @@ impl GhostAI {
                 output.facing_right = self.aim_dir_x > 0.0;
 
                 // If player gets too close during aim, cancel and reposition
-                if dist < TOO_CLOSE * 0.7 {
+                if dist < AIM_CANCEL_DISTANCE {
                     self.state = GhostState::Reposition;
                     self.reposition_dx = -dx / dist;
                     self.reposition_dy = -dy / dist;
                     self.timer = 0.6;
+                } else if dist > MAX_AIM_RANGE {
+                    // Player moved out of aim range, cancel and return to float
+                    self.state = GhostState::Float;
+                    self.timer = 0.5 + self.rand_float() * 0.5;
                 } else if self.timer <= 0.0 {
                     self.state = GhostState::Shoot;
                     self.timer = 0.0;

@@ -85,9 +85,12 @@ impl Terminal {
     }
 
     /// Handle terminal resize: update framebuffer and renderer dimensions.
+    /// Clamps to minimum 20×10 to prevent zero-size panics.
     pub fn handle_resize(&mut self, cols: u16, rows: u16) {
-        self.fb.resize(cols as usize, rows as usize);
-        self.renderer.resize(cols as usize, rows as usize);
+        let cols = cols.max(20) as usize;
+        let rows = rows.max(10) as usize;
+        self.fb.resize(cols, rows);
+        self.renderer.resize(cols, rows);
     }
 }
 

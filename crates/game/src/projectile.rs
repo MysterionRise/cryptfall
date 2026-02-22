@@ -1,5 +1,4 @@
 use engine::collision::AABB;
-use engine::color::Color;
 use engine::tilemap::TileMap;
 use engine::FrameBuffer;
 
@@ -98,13 +97,14 @@ impl ProjectileSystem {
 
     /// Update all projectiles. Returns positions where trail particles should spawn
     /// and positions where impact particles should spawn (wall hits).
+    #[allow(clippy::type_complexity)]
     pub fn update(
         &mut self,
         dt: f32,
         tilemap: &TileMap,
     ) -> (Vec<(f32, f32)>, Vec<(f32, f32)>) {
-        let mut trail_positions = Vec::new();
-        let mut impact_positions = Vec::new();
+        let mut trail_positions = Vec::with_capacity(16);
+        let mut impact_positions = Vec::with_capacity(4);
 
         for proj in &mut self.projectiles {
             let was_alive = proj.alive;
@@ -127,7 +127,7 @@ impl ProjectileSystem {
     /// Check projectiles against the player hurtbox. Returns total damage and
     /// positions of hits for particle effects.
     pub fn check_player_hits(&mut self, player_hurtbox: &AABB) -> Vec<(f32, f32, i32)> {
-        let mut hits = Vec::new();
+        let mut hits = Vec::with_capacity(8);
         for proj in &mut self.projectiles {
             if !proj.alive {
                 continue;
@@ -150,6 +150,7 @@ impl ProjectileSystem {
         self.projectiles.clear();
     }
 
+    #[allow(dead_code)] // Useful for debugging and future HUD display
     pub fn count(&self) -> usize {
         self.projectiles.len()
     }

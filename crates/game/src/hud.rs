@@ -50,30 +50,39 @@ impl DamageNumber {
         let sy = self.y as i32 - cam_y;
 
         // Render each digit using the 3x5 pixel font
-        let digits = get_digits(self.value);
+        let (digits, count) = get_digits(self.value);
         let mut offset_x = 0i32;
-        for &digit in &digits {
+        for &digit in &digits[..count] {
             render_digit(fb, digit, sx + offset_x, sy, c);
             offset_x += 4; // 3 wide + 1 spacing
         }
     }
 }
 
-fn get_digits(mut value: i32) -> Vec<u8> {
+/// Returns digits of a non-negative integer as a fixed-size array.
+/// Returns (array, count) where count is the number of valid digits.
+fn get_digits(mut value: i32) -> ([u8; 5], usize) {
     if value <= 0 {
-        return vec![0];
+        let mut arr = [0u8; 5];
+        arr[0] = 0;
+        return (arr, 1);
     }
-    let mut digits = Vec::new();
-    while value > 0 {
-        digits.push((value % 10) as u8);
+    let mut buf = [0u8; 5];
+    let mut count = 0usize;
+    while value > 0 && count < 5 {
+        buf[count] = (value % 10) as u8;
         value /= 10;
+        count += 1;
     }
-    digits.reverse();
-    digits
+    // Reverse the digits in-place
+    buf[..count].reverse();
+    (buf, count)
 }
 
 /// Render health hearts at screen position. Hearts are 5x5 with 1px spacing.
 pub fn render_hearts(fb: &mut FrameBuffer, hp: i32, max_hp: i32, sx: i32, sy: i32) {
+    let hp = hp.max(0);
+    let max_hp = max_hp.max(0);
     for i in 0..max_hp {
         let x = sx + i * 6;
         let sprite = if i < hp { &HEART_FULL } else { &HEART_EMPTY };

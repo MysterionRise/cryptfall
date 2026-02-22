@@ -63,6 +63,7 @@ impl SkeletonAI {
     }
 
     /// Returns (move_dx, move_dy, facing_right_hint, attack_hitbox_active)
+    #[allow(clippy::too_many_arguments)]
     pub fn update(
         &mut self,
         dt: f32,
@@ -148,6 +149,7 @@ impl SkeletonAI {
             }
             SkeletonState::WindUp => {
                 output.winding_up = true;
+                output.telegraph = true;
                 output.facing_right = self.attack_dir_x > 0.0;
                 if self.timer <= 0.0 {
                     self.state = SkeletonState::Attack;
@@ -220,4 +222,5 @@ pub struct SkeletonOutput {
     pub winding_up: bool,
     pub attacking: bool,
     pub hitbox_active: bool,
+    pub telegraph: bool,
 }

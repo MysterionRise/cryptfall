@@ -39,12 +39,14 @@ const GHOST_COLLISION_OFFSET_Y: f32 = 6.0;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum EnemyType {
+    #[allow(dead_code)] // Used when slime waves are added
     Slime,
     Skeleton,
     Ghost,
 }
 
 enum AIState {
+    #[allow(dead_code)] // Used when slime waves are added
     None,
     Skeleton(SkeletonAI),
     Ghost(GhostAI),
@@ -68,9 +70,12 @@ pub struct Enemy {
     /// Cached aim direction for projectile spawning
     pub aim_dir_x: f32,
     pub aim_dir_y: f32,
+    /// Cooldown before this enemy can deal contact damage again
+    pub contact_damage_cooldown: f32,
 }
 
 impl Enemy {
+    #[allow(dead_code)] // Used when slime waves are added
     pub fn new_slime(x: f32, y: f32) -> Self {
         Self {
             transform: Transform::new(x, y),
@@ -88,6 +93,7 @@ impl Enemy {
             fired_projectile: false,
             aim_dir_x: 0.0,
             aim_dir_y: 0.0,
+            contact_damage_cooldown: 0.0,
         }
     }
 
@@ -108,6 +114,7 @@ impl Enemy {
             fired_projectile: false,
             aim_dir_x: 0.0,
             aim_dir_y: 0.0,
+            contact_damage_cooldown: 0.0,
         }
     }
 
@@ -128,6 +135,7 @@ impl Enemy {
             fired_projectile: false,
             aim_dir_x: 0.0,
             aim_dir_y: 0.0,
+            contact_damage_cooldown: 0.0,
         }
     }
 
@@ -197,6 +205,18 @@ impl Enemy {
         }
     }
 
+    /// Returns true if this enemy can deal contact damage (alive Slime with cooldown expired).
+    #[allow(dead_code)] // Used when slime waves are added
+    pub fn can_deal_contact_damage(&self) -> bool {
+        self.alive && self.enemy_type == EnemyType::Slime && self.contact_damage_cooldown <= 0.0
+    }
+
+    /// Puts contact damage on cooldown (0.5s).
+    #[allow(dead_code)] // Used when slime waves are added
+    pub fn apply_contact_damage_cooldown(&mut self) {
+        self.contact_damage_cooldown = 0.5;
+    }
+
     /// Returns the skeleton's attack hitbox if it has one active, else None.
     pub fn attack_hitbox(&self) -> Option<AABB> {
         if let AIState::Skeleton(ref ai) = self.ai {
@@ -221,6 +241,9 @@ impl Enemy {
         }
         if self.stagger_timer > 0.0 {
             self.stagger_timer -= dt_f32;
+        }
+        if self.contact_damage_cooldown > 0.0 {
+            self.contact_damage_cooldown -= dt_f32;
         }
 
         let (col_ox, col_oy, col_w, col_h) = self.collision_params();

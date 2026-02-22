@@ -243,3 +243,322 @@ fn clip_axis(pos: i32, sprite_size: usize, fb_size: usize) -> (usize, usize, usi
     let count = (end as usize).saturating_sub(dst_start);
     (src_start, dst_start, count)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_creates_correct_dimensions() {
+        // Arrange & Act
+        let fb = FrameBuffer::new(80, 24);
+
+        // Assert
+        assert_eq!(fb.width(), 80, "Width should match term_cols");
+        assert_eq!(
+            fb.height(),
+            48,
+            "Height should be term_rows * 2 (half-block rendering)"
+        );
+    }
+
+    #[test]
+    fn test_new_all_pixels_none() {
+        // Arrange & Act
+        let fb = FrameBuffer::new(10, 5);
+
+        // Assert: all pixels should be None
+        for x in 0..10 {
+            for y in 0..10 {
+                assert_eq!(
+                    fb.get_pixel(x, y),
+                    None,
+                    "Pixel ({}, {}) should be None after creation",
+                    x,
+                    y
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_set_pixel_and_get_pixel_roundtrip() {
+        // Arrange
+        let mut fb = FrameBuffer::new(10, 5);
+        let color: Color = [128, 64, 32];
+
+        // Act
+        fb.set_pixel(3, 4, color);
+
+        // Assert
+        assert_eq!(
+            fb.get_pixel(3, 4),
+            Some(color),
+            "get_pixel should return the color set by set_pixel"
+        );
+    }
+
+    #[test]
+    fn test_set_pixel_multiple_colors() {
+        // Arrange
+        let mut fb = FrameBuffer::new(10, 5);
+        let red: Color = [255, 0, 0];
+        let green: Color = [0, 255, 0];
+        let blue: Color = [0, 0, 255];
+
+        // Act
+        fb.set_pixel(0, 0, red);
+        fb.set_pixel(1, 1, green);
+        fb.set_pixel(2, 2, blue);
+
+        // Assert
+        assert_eq!(fb.get_pixel(0, 0), Some(red), "Should get red at (0,0)");
+        assert_eq!(fb.get_pixel(1, 1), Some(green), "Should get green at (1,1)");
+        assert_eq!(fb.get_pixel(2, 2), Some(blue), "Should get blue at (2,2)");
+    }
+
+    #[test]
+    fn test_set_pixel_overwrites_previous() {
+        // Arrange
+        let mut fb = FrameBuffer::new(10, 5);
+
+        // Act
+        fb.set_pixel(5, 5, [100, 100, 100]);
+        fb.set_pixel(5, 5, [200, 200, 200]);
+
+        // Assert
+        assert_eq!(
+            fb.get_pixel(5, 5),
+            Some([200, 200, 200]),
+            "Second set_pixel should overwrite the first"
+        );
+    }
+
+    #[test]
+    fn test_set_pixel_out_of_bounds_is_silently_ignored() {
+        // Arrange
+        let mut fb = FrameBuffer::new(10, 5); // 10 wide, 10 tall (5*2)
+
+        // Act: these should not panic
+        fb.set_pixel(100, 0, [255, 0, 0]);
+        fb.set_pixel(0, 100, [255, 0, 0]);
+        fb.set_pixel(100, 100, [255, 0, 0]);
+        fb.set_pixel(usize::MAX, usize::MAX, [255, 0, 0]);
+
+        // Assert: no panic occurred (implicit), and in-bounds pixels unaffected
+        assert_eq!(fb.get_pixel(0, 0), None, "In-bounds pixel should be unaffected");
+    }
+
+    #[test]
+    fn test_get_pixel_out_of_bounds_returns_none() {
+        // Arrange
+        let fb = FrameBuffer::new(10, 5); // 10 wide, 10 tall
+
+        // Act & Assert
+        assert_eq!(
+            fb.get_pixel(100, 0),
+            None,
+            "Out-of-bounds x should return None"
+        );
+        assert_eq!(
+            fb.get_pixel(0, 100),
+            None,
+            "Out-of-bounds y should return None"
+        );
+        assert_eq!(
+            fb.get_pixel(100, 100),
+            None,
+            "Both out-of-bounds should return None"
+        );
+    }
+
+    #[test]
+    fn test_set_pixel_safe_with_negative_coordinates_does_not_panic() {
+        // Arrange
+        let mut fb = FrameBuffer::new(10, 5);
+
+        // Act: negative coordinates should be silently ignored
+        fb.set_pixel_safe(-1, 0, [255, 0, 0]);
+        fb.set_pixel_safe(0, -1, [255, 0, 0]);
+        fb.set_pixel_safe(-100, -100, [255, 0, 0]);
+        fb.set_pixel_safe(i32::MIN, i32::MIN, [255, 0, 0]);
+
+        // Assert: no panic (implicit), in-bounds pixels unaffected
+        assert_eq!(fb.get_pixel(0, 0), None);
+    }
+
+    #[test]
+    fn test_set_pixel_safe_with_valid_coordinates_works() {
+        // Arrange
+        let mut fb = FrameBuffer::new(10, 5);
+
+        // Act
+        fb.set_pixel_safe(5, 5, [42, 42, 42]);
+
+        // Assert
+        assert_eq!(
+            fb.get_pixel(5, 5),
+            Some([42, 42, 42]),
+            "set_pixel_safe with valid coordinates should work like set_pixel"
+        );
+    }
+
+    #[test]
+    fn test_set_pixel_safe_out_of_bounds_positive_ignored() {
+        // Arrange
+        let mut fb = FrameBuffer::new(10, 5);
+
+        // Act: large positive coordinates beyond bounds
+        fb.set_pixel_safe(1000, 0, [255, 0, 0]);
+        fb.set_pixel_safe(0, 1000, [255, 0, 0]);
+
+        // Assert: no panic (implicit)
+        assert_eq!(fb.get_pixel(0, 0), None);
+    }
+
+    #[test]
+    fn test_clear_sets_all_pixels_to_none() {
+        // Arrange
+        let mut fb = FrameBuffer::new(10, 5);
+        // Set some pixels
+        fb.set_pixel(0, 0, [255, 0, 0]);
+        fb.set_pixel(5, 5, [0, 255, 0]);
+        fb.set_pixel(9, 9, [0, 0, 255]);
+
+        // Act
+        fb.clear();
+
+        // Assert
+        assert_eq!(fb.get_pixel(0, 0), None, "Pixel (0,0) should be None after clear");
+        assert_eq!(fb.get_pixel(5, 5), None, "Pixel (5,5) should be None after clear");
+        assert_eq!(fb.get_pixel(9, 9), None, "Pixel (9,9) should be None after clear");
+    }
+
+    #[test]
+    fn test_clear_full_framebuffer() {
+        // Arrange
+        let mut fb = FrameBuffer::new(5, 3); // 5 wide, 6 tall
+        // Fill every pixel
+        for x in 0..5 {
+            for y in 0..6 {
+                fb.set_pixel(x, y, [255, 255, 255]);
+            }
+        }
+
+        // Act
+        fb.clear();
+
+        // Assert
+        for x in 0..5 {
+            for y in 0..6 {
+                assert_eq!(
+                    fb.get_pixel(x, y),
+                    None,
+                    "Pixel ({}, {}) should be None after clear",
+                    x,
+                    y
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_resize_changes_dimensions_and_clears() {
+        // Arrange
+        let mut fb = FrameBuffer::new(10, 5);
+        fb.set_pixel(0, 0, [255, 0, 0]);
+
+        // Act
+        fb.resize(20, 10);
+
+        // Assert
+        assert_eq!(fb.width(), 20, "Width should update to new term_cols");
+        assert_eq!(
+            fb.height(),
+            20,
+            "Height should be new term_rows * 2"
+        );
+        assert_eq!(
+            fb.get_pixel(0, 0),
+            None,
+            "All pixels should be cleared after resize"
+        );
+    }
+
+    #[test]
+    fn test_resize_to_smaller() {
+        // Arrange
+        let mut fb = FrameBuffer::new(80, 24);
+
+        // Act
+        fb.resize(40, 12);
+
+        // Assert
+        assert_eq!(fb.width(), 40);
+        assert_eq!(fb.height(), 24); // 12 * 2
+    }
+
+    #[test]
+    fn test_fill_rect_basic() {
+        // Arrange
+        let mut fb = FrameBuffer::new(10, 5);
+        let color: Color = [100, 200, 50];
+
+        // Act: fill a 3x3 rect starting at (2,2)
+        fb.fill_rect(2, 2, 3, 3, color);
+
+        // Assert: pixels inside rect should be set
+        for x in 2..5 {
+            for y in 2..5 {
+                assert_eq!(
+                    fb.get_pixel(x, y),
+                    Some(color),
+                    "Pixel ({}, {}) should be filled",
+                    x,
+                    y
+                );
+            }
+        }
+        // Pixels outside should be None
+        assert_eq!(fb.get_pixel(1, 2), None, "Pixel outside rect should be None");
+        assert_eq!(fb.get_pixel(5, 2), None, "Pixel outside rect should be None");
+    }
+
+    #[test]
+    fn test_boundary_pixels_at_max_indices() {
+        // Arrange
+        let mut fb = FrameBuffer::new(10, 5); // 10 wide, 10 tall
+
+        // Act: set pixels at the boundary
+        fb.set_pixel(9, 9, [255, 255, 255]); // last valid pixel
+        fb.set_pixel(0, 0, [128, 128, 128]); // first valid pixel
+
+        // Assert
+        assert_eq!(fb.get_pixel(9, 9), Some([255, 255, 255]));
+        assert_eq!(fb.get_pixel(0, 0), Some([128, 128, 128]));
+
+        // Just beyond boundary
+        assert_eq!(fb.get_pixel(10, 0), None);
+        assert_eq!(fb.get_pixel(0, 10), None);
+    }
+
+    #[test]
+    fn test_framebuffer_1x1() {
+        // Arrange: minimal framebuffer (1 col, 1 row = 1x2 pixels)
+        let mut fb = FrameBuffer::new(1, 1);
+
+        // Assert dimensions
+        assert_eq!(fb.width(), 1);
+        assert_eq!(fb.height(), 2);
+
+        // Act
+        fb.set_pixel(0, 0, [10, 20, 30]);
+        fb.set_pixel(0, 1, [40, 50, 60]);
+
+        // Assert
+        assert_eq!(fb.get_pixel(0, 0), Some([10, 20, 30]));
+        assert_eq!(fb.get_pixel(0, 1), Some([40, 50, 60]));
+        assert_eq!(fb.get_pixel(0, 2), None);
+        assert_eq!(fb.get_pixel(1, 0), None);
+    }
+}
