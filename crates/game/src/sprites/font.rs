@@ -77,19 +77,22 @@ pub fn render_digit(fb: &mut FrameBuffer, digit: u8, sx: i32, sy: i32, color: Co
 
 // 3x5 pixel letter fonts for text rendering
 #[rustfmt::skip]
-const LETTER_FONTS: [(char, [bool; 15]); 13] = [
+const LETTER_FONTS: [(char, [bool; 15]); 16] = [
     ('A', [false,true,false, true,false,true, true,true,true, true,false,true, true,false,true]),
     ('C', [false,true,true, true,false,false, true,false,false, true,false,false, false,true,true]),
     ('D', [true,true,false, true,false,true, true,false,true, true,false,true, true,true,false]),
     ('E', [true,true,true, true,false,false, true,true,false, true,false,false, true,true,true]),
     ('I', [true,true,true, false,true,false, false,true,false, false,true,false, true,true,true]),
     ('K', [true,false,true, true,false,true, true,true,false, true,false,true, true,false,true]),
+    ('N', [true,false,true, true,true,true, true,true,true, true,false,true, true,false,true]),
     ('O', [false,true,false, true,false,true, true,false,true, true,false,true, false,true,false]),
     ('P', [true,true,false, true,false,true, true,true,false, true,false,false, true,false,false]),
     ('R', [true,true,false, true,false,true, true,true,false, true,false,true, true,false,true]),
     ('S', [false,true,true, true,false,false, false,true,false, false,false,true, true,true,false]),
     ('T', [true,true,true, false,true,false, false,true,false, false,true,false, false,true,false]),
     ('U', [true,false,true, true,false,true, true,false,true, true,false,true, false,true,false]),
+    ('V', [true,false,true, true,false,true, true,false,true, true,false,true, false,true,false]),
+    ('W', [true,false,true, true,false,true, true,true,true, true,true,true, true,false,true]),
     ('Y', [true,false,true, true,false,true, false,true,false, false,true,false, false,true,false]),
 ];
 

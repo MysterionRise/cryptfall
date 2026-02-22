@@ -238,6 +238,10 @@ enum DeathPhase {
     Dead,
 }
 
+const MAX_WAVES: u8 = 3;
+const WAVE_TRANSITION_DELAY: f32 = 1.5;
+const WAVE_ANNOUNCE_DURATION: f32 = 2.0;
+
 struct CryptfallGame {
     player: Player,
     enemies: Vec<Enemy>,
@@ -253,12 +257,17 @@ struct CryptfallGame {
     debug_hitboxes: bool,
     death_phase: DeathPhase,
     death_timer: f32,
+    current_wave: u8,
+    wave_clear_timer: f32,
+    wave_announce_timer: f32,
+    victory: bool,
 }
 
 impl CryptfallGame {
     fn new() -> Self {
-        let tilemap = create_test_room();
-        let player = Player::new(120.0, 88.0);
+        let tilemap = create_arena();
+        // Player spawns at center of 20x15 arena (160x120 pixels)
+        let player = Player::new(75.0, 53.0);
 
         let mut camera = Camera::new(80, 48);
         let (cx, cy) = player.center();
@@ -266,13 +275,7 @@ impl CryptfallGame {
         camera.snap();
         camera.clamp_to_bounds(tilemap.pixel_width() as f32, tilemap.pixel_height() as f32);
 
-        let enemies = vec![
-            Enemy::new_skeleton(160.0, 120.0, 11111),
-            Enemy::new_skeleton(120.0, 150.0, 22222),
-            Enemy::new_skeleton(60.0, 100.0, 33333),
-            Enemy::new_ghost(180.0, 80.0, 44444),
-            Enemy::new_ghost(100.0, 60.0, 55555),
-        ];
+        let enemies = spawn_wave(1);
 
         Self {
             player,
@@ -289,7 +292,38 @@ impl CryptfallGame {
             debug_hitboxes: false,
             death_phase: DeathPhase::Alive,
             death_timer: 0.0,
+            current_wave: 1,
+            wave_clear_timer: 0.0,
+            wave_announce_timer: WAVE_ANNOUNCE_DURATION,
+            victory: false,
         }
+    }
+}
+
+fn spawn_wave(wave: u8) -> Vec<Enemy> {
+    match wave {
+        1 => vec![
+            // Wave 1: 3 skeletons
+            Enemy::new_skeleton(24.0, 24.0, 11111),
+            Enemy::new_skeleton(128.0, 24.0, 22222),
+            Enemy::new_skeleton(24.0, 88.0, 33333),
+        ],
+        2 => vec![
+            // Wave 2: 2 skeletons + 1 ghost
+            Enemy::new_skeleton(24.0, 24.0, 44444),
+            Enemy::new_skeleton(128.0, 88.0, 55555),
+            Enemy::new_ghost(128.0, 24.0, 66666),
+        ],
+        3 => vec![
+            // Wave 3: 4 skeletons + 2 ghosts
+            Enemy::new_skeleton(24.0, 24.0, 77777),
+            Enemy::new_skeleton(128.0, 24.0, 88888),
+            Enemy::new_skeleton(24.0, 88.0, 99999),
+            Enemy::new_skeleton(128.0, 88.0, 11222),
+            Enemy::new_ghost(76.0, 16.0, 33444),
+            Enemy::new_ghost(76.0, 96.0, 55666),
+        ],
+        _ => vec![],
     }
 }
 
@@ -354,6 +388,15 @@ impl Game for CryptfallGame {
                 }
                 return true;
             }
+        }
+
+        // Victory: wait for restart
+        if self.victory {
+            if input.is_pressed(GameKey::Attack) {
+                self.restart();
+            }
+            self.particles.update(dt_f32);
+            return true;
         }
 
         // Demo mode management
@@ -561,6 +604,32 @@ impl Game for CryptfallGame {
             self.flash_timer -= 1;
         }
 
+        // Wave announce timer
+        if self.wave_announce_timer > 0.0 {
+            self.wave_announce_timer -= dt_f32;
+        }
+
+        // Wave progression: check if all enemies are dead
+        if !self.victory {
+            let all_dead = self.enemies.iter().all(|e| !e.alive && e.animation.is_finished());
+            if all_dead && !self.enemies.is_empty() {
+                self.wave_clear_timer += dt_f32;
+                if self.wave_clear_timer >= WAVE_TRANSITION_DELAY {
+                    if self.current_wave < MAX_WAVES {
+                        self.current_wave += 1;
+                        self.enemies = spawn_wave(self.current_wave);
+                        self.projectiles.clear();
+                        self.wave_clear_timer = 0.0;
+                        self.wave_announce_timer = WAVE_ANNOUNCE_DURATION;
+                    } else {
+                        self.victory = true;
+                    }
+                }
+            } else {
+                self.wave_clear_timer = 0.0;
+            }
+        }
+
         // Camera follows player center
         let (cx, cy) = self.player.center();
         self.camera.follow(cx, cy);
@@ -661,6 +730,38 @@ impl Game for CryptfallGame {
             _ => {}
         }
 
+        // --- Victory overlay ---
+        if self.victory {
+            fb.overlay([0, 0, 0], 0.5);
+            let text = "VICTORY";
+            let tw = sprites::font::text_width(text);
+            let tx = (fw as i32 - tw) / 2;
+            let ty = (fh as i32) / 2 - 4;
+            sprites::font::render_text(fb, text, tx, ty, [255, 220, 50]);
+
+            let text2 = "PRESS ATTACK";
+            let tw2 = sprites::font::text_width(text2);
+            let tx2 = (fw as i32 - tw2) / 2;
+            sprites::font::render_text(fb, text2, tx2, ty + 8, [150, 150, 150]);
+        }
+
+        // --- Wave announce ---
+        if self.wave_announce_timer > 0.0 && !self.victory {
+            let wave_text = match self.current_wave {
+                1 => "WAVE 1",
+                2 => "WAVE 2",
+                3 => "WAVE 3",
+                _ => "WAVE",
+            };
+            let tw = sprites::font::text_width(wave_text);
+            let tx = (fw as i32 - tw) / 2;
+            let ty = 10;
+            // Fade out the text over time
+            let alpha_val = (self.wave_announce_timer / WAVE_ANNOUNCE_DURATION).min(1.0);
+            let brightness = (255.0 * alpha_val) as u8;
+            sprites::font::render_text(fb, wave_text, tx, ty, [brightness, brightness, brightness]);
+        }
+
         // --- HUD ---
         let bar_h = 8;
         for y in 0..bar_h.min(fh) {
@@ -671,6 +772,19 @@ impl Game for CryptfallGame {
 
         // Health hearts at top-left
         hud::render_hearts(fb, self.player.hp, self.player.max_hp, 2, 1);
+
+        // Wave indicator at center of HUD
+        let wave_hud = match self.current_wave {
+            1 => "1",
+            2 => "2",
+            3 => "3",
+            _ => "",
+        };
+        if !wave_hud.is_empty() {
+            let whw = sprites::font::text_width(wave_hud);
+            let whx = (fw as i32 - whw) / 2;
+            sprites::font::render_text(fb, wave_hud, whx, 1, [180, 180, 180]);
+        }
 
         // Performance bars (right-aligned, smaller)
         let bar_w = fw / 3;
@@ -702,14 +816,9 @@ impl Game for CryptfallGame {
 
 impl CryptfallGame {
     fn restart(&mut self) {
-        self.player = Player::new(120.0, 88.0);
-        self.enemies = vec![
-            Enemy::new_skeleton(160.0, 120.0, 11111),
-            Enemy::new_skeleton(120.0, 150.0, 22222),
-            Enemy::new_skeleton(60.0, 100.0, 33333),
-            Enemy::new_ghost(180.0, 80.0, 44444),
-            Enemy::new_ghost(100.0, 60.0, 55555),
-        ];
+        self.player = Player::new(75.0, 53.0);
+        self.current_wave = 1;
+        self.enemies = spawn_wave(1);
         self.projectiles.clear();
         self.particles.clear();
         self.damage_numbers.clear();
@@ -717,6 +826,9 @@ impl CryptfallGame {
         self.hit_pause_frames = 0;
         self.death_phase = DeathPhase::Alive;
         self.death_timer = 0.0;
+        self.wave_clear_timer = 0.0;
+        self.wave_announce_timer = WAVE_ANNOUNCE_DURATION;
+        self.victory = false;
         self.idle_timer = 0.0;
         self.demo = None;
 
@@ -765,33 +877,24 @@ fn draw_aabb_outline(
 }
 
 #[rustfmt::skip]
-fn create_test_room() -> TileMap {
+fn create_arena() -> TileMap {
+    // 20x15 tile arena, no interior walls
     let layout = [
-        "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
-        "W............................W",
-        "W............................W",
-        "W....WWWW......WWWW..........W",
-        "W....W..........W............W",
-        "W....W..........W............W",
-        "W................W...........W",
-        "W............................W",
-        "W............................W",
-        "W........WW..................W",
-        "W........WW..................W",
-        "W............................W",
-        "W............................W",
-        "W...........WWWWWW...........W",
-        "W............................W",
-        "W............................W",
-        "W..WW....................WW..W",
-        "W..WW....................WW..W",
-        "W............................W",
-        "W............................W",
-        "W............................W",
-        "W............................W",
-        "W............................W",
-        "W............................W",
-        "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+        "WWWWWWWWWWWWWWWWWWWW",
+        "W..................W",
+        "W..................W",
+        "W..................W",
+        "W..................W",
+        "W..................W",
+        "W..................W",
+        "W..................W",
+        "W..................W",
+        "W..................W",
+        "W..................W",
+        "W..................W",
+        "W..................W",
+        "W..................W",
+        "WWWWWWWWWWWWWWWWWWWW",
     ];
     let height = layout.len();
     let width = layout[0].len();
