@@ -5,7 +5,7 @@ mod projectile;
 mod sprites;
 mod tiles;
 
-use enemies::Enemy;
+use enemies::{Enemy, EnemyType};
 use engine::{
     color, render_tilemap, BurstConfig, Camera, Color, FrameBuffer, FrameInfo, Game, GameKey,
     InputState, ParticleSystem, TileMap, TileType,
@@ -14,11 +14,14 @@ use player::Player;
 
 const FLASH_FRAMES: u32 = 5;
 const DEMO_IDLE_THRESHOLD: f32 = 5.0;
+const DEATH_FADE_DURATION: f32 = 1.5;
 
 /// Dash i-frames tint: cool blue
 const DASH_TINT: Color = [100, 160, 255];
 /// Attack hit flash tint: warm red
 const ATTACK_TINT: Color = [255, 80, 80];
+/// I-frame flash tint
+const IFRAME_TINT: Color = [255, 255, 255];
 
 // --- Particle burst configurations ---
 
@@ -134,6 +137,36 @@ const PROJ_IMPACT_CONFIG: BurstConfig = BurstConfig {
     base_angle: 0.0,
 };
 
+const BLOOD_COLORS: &[Color] = &[[200, 30, 30], [150, 20, 20], [255, 50, 50], [180, 10, 10]];
+
+const BLOOD_BURST_CONFIG: BurstConfig = BurstConfig {
+    count_min: 10,
+    count_max: 16,
+    speed_min: 20.0,
+    speed_max: 70.0,
+    lifetime_min: 0.2,
+    lifetime_max: 0.5,
+    colors: BLOOD_COLORS,
+    gravity: 40.0,
+    friction: 0.9,
+    angle_spread: std::f32::consts::TAU,
+    base_angle: 0.0,
+};
+
+const PLAYER_DEATH_BURST_CONFIG: BurstConfig = BurstConfig {
+    count_min: 25,
+    count_max: 40,
+    speed_min: 15.0,
+    speed_max: 90.0,
+    lifetime_min: 0.4,
+    lifetime_max: 1.0,
+    colors: BLOOD_COLORS,
+    gravity: 30.0,
+    friction: 0.92,
+    angle_spread: std::f32::consts::TAU,
+    base_angle: 0.0,
+};
+
 struct DemoState {
     timer: f32,
     dx: f32,
@@ -198,6 +231,13 @@ impl DemoState {
 
 const FRAC_1_SQRT_2: f32 = std::f32::consts::FRAC_1_SQRT_2;
 
+enum DeathPhase {
+    Alive,
+    Dying,
+    FadeOut,
+    Dead,
+}
+
 struct CryptfallGame {
     player: Player,
     enemies: Vec<Enemy>,
@@ -211,6 +251,8 @@ struct CryptfallGame {
     idle_timer: f32,
     demo: Option<DemoState>,
     debug_hitboxes: bool,
+    death_phase: DeathPhase,
+    death_timer: f32,
 }
 
 impl CryptfallGame {
@@ -245,6 +287,8 @@ impl CryptfallGame {
             idle_timer: 0.0,
             demo: None,
             debug_hitboxes: false,
+            death_phase: DeathPhase::Alive,
+            death_timer: 0.0,
         }
     }
 }
@@ -277,6 +321,39 @@ impl Game for CryptfallGame {
             // Still update particles during hit pause for visual effect
             self.particles.update(dt_f32);
             return true;
+        }
+
+        // Death sequence management
+        match self.death_phase {
+            DeathPhase::Alive => {}
+            DeathPhase::Dying => {
+                // Wait for death animation to finish
+                self.death_timer += dt_f32;
+                self.player.update_with_input(0.0, 0.0, false, false, dt, &self.tilemap);
+                self.particles.update(dt_f32);
+                self.camera.update(dt);
+                if self.player.animation.is_finished() {
+                    self.death_phase = DeathPhase::FadeOut;
+                    self.death_timer = 0.0;
+                }
+                return true;
+            }
+            DeathPhase::FadeOut => {
+                self.death_timer += dt_f32;
+                self.particles.update(dt_f32);
+                self.camera.update(dt);
+                if self.death_timer >= DEATH_FADE_DURATION {
+                    self.death_phase = DeathPhase::Dead;
+                }
+                return true;
+            }
+            DeathPhase::Dead => {
+                // Wait for attack key to restart
+                if input.is_pressed(GameKey::Attack) {
+                    self.restart();
+                }
+                return true;
+            }
         }
 
         // Demo mode management
@@ -409,8 +486,67 @@ impl Game for CryptfallGame {
             self.particles.burst(ix, iy, &PROJ_IMPACT_CONFIG);
         }
 
-        // Check projectile-player collision (damage applied in session 2.6)
-        let _player_hits = self.projectiles.check_player_hits(&self.player.world_hurtbox());
+        // --- Enemy damage to player ---
+        let player_hurtbox = self.player.world_hurtbox();
+        let (pcx, pcy) = self.player.center();
+
+        // Skeleton melee attacks
+        for enemy in &self.enemies {
+            if !enemy.alive || enemy.enemy_type != EnemyType::Skeleton {
+                continue;
+            }
+            if let Some(atk_hb) = enemy.attack_hitbox() {
+                if atk_hb.overlaps(&player_hurtbox) {
+                    let (ecx, ecy) = enemy.center();
+                    let dx = pcx - ecx;
+                    let dy = pcy - ecy;
+                    let len = (dx * dx + dy * dy).sqrt().max(0.01);
+                    let died = self.player.take_damage(1, dx / len, dy / len);
+                    if died {
+                        self.hit_pause_frames = 8;
+                        self.camera.shake(8.0);
+                        self.particles.burst(pcx, pcy, &PLAYER_DEATH_BURST_CONFIG);
+                        self.death_phase = DeathPhase::Dying;
+                        self.death_timer = 0.0;
+                    } else if self.player.invincible_timer > 0.0 {
+                        self.hit_pause_frames = 4;
+                        self.camera.shake(4.0);
+                        self.particles.burst(pcx, pcy, &BLOOD_BURST_CONFIG);
+                        self.damage_numbers.push(hud::DamageNumber::new(
+                            1, pcx - 2.0, pcy - 8.0, [255, 80, 80],
+                        ));
+                    }
+                    break; // only take one hit per frame
+                }
+            }
+        }
+
+        // Projectile hits
+        if !self.player.is_dead() {
+            let proj_hits = self.projectiles.check_player_hits(&self.player.world_hurtbox());
+            for (hx, hy, dmg) in proj_hits {
+                let dx = pcx - hx;
+                let dy = pcy - hy;
+                let len = (dx * dx + dy * dy).sqrt().max(0.01);
+                let died = self.player.take_damage(dmg, dx / len, dy / len);
+                if died {
+                    self.hit_pause_frames = 8;
+                    self.camera.shake(8.0);
+                    self.particles.burst(pcx, pcy, &PLAYER_DEATH_BURST_CONFIG);
+                    self.death_phase = DeathPhase::Dying;
+                    self.death_timer = 0.0;
+                    break;
+                } else if self.player.invincible_timer > 0.0 {
+                    self.hit_pause_frames = 4;
+                    self.camera.shake(4.0);
+                    self.particles.burst(hx, hy, &BLOOD_BURST_CONFIG);
+                    self.damage_numbers.push(hud::DamageNumber::new(
+                        dmg, hx - 2.0, hy - 8.0, [255, 80, 80],
+                    ));
+                    break; // one hit per frame due to i-frames
+                }
+            }
+        }
 
         // Update particles
         self.particles.update(dt_f32);
@@ -455,14 +591,33 @@ impl Game for CryptfallGame {
         }
 
         // --- Draw player ---
-        if self.flash_timer > 0 {
-            self.player
-                .render_tinted(fb, alpha, cam_x, cam_y, ATTACK_TINT);
-        } else if self.player.is_dashing() {
-            self.player
-                .render_tinted(fb, alpha, cam_x, cam_y, DASH_TINT);
+        let player_visible = if self.player.is_dead() {
+            !self.player.animation.is_finished()
+        } else if self.player.invincible_timer > 0.0 && !self.player.is_dashing() {
+            // I-frame flashing: alternate every ~2 frames (66ms)
+            ((self.player.invincible_timer * 15.0) as u32).is_multiple_of(2)
         } else {
-            self.player.render(fb, alpha, cam_x, cam_y);
+            true
+        };
+
+        if player_visible {
+            if self.flash_timer > 0 {
+                self.player
+                    .render_tinted(fb, alpha, cam_x, cam_y, ATTACK_TINT);
+            } else if self.player.is_dashing() {
+                self.player
+                    .render_tinted(fb, alpha, cam_x, cam_y, DASH_TINT);
+            } else if self.player.invincible_timer > 0.0 && !self.player.is_dead() {
+                // I-frame white flash on visible frames
+                if ((self.player.invincible_timer * 30.0) as u32).is_multiple_of(4) {
+                    self.player
+                        .render_tinted(fb, alpha, cam_x, cam_y, IFRAME_TINT);
+                } else {
+                    self.player.render(fb, alpha, cam_x, cam_y);
+                }
+            } else {
+                self.player.render(fb, alpha, cam_x, cam_y);
+            }
         }
 
         // --- Draw projectiles ---
@@ -481,30 +636,62 @@ impl Game for CryptfallGame {
             self.render_debug_hitboxes(fb, cam_x, cam_y);
         }
 
+        // --- Death fade overlay ---
+        match self.death_phase {
+            DeathPhase::FadeOut => {
+                let opacity = (self.death_timer / DEATH_FADE_DURATION).min(1.0);
+                fb.overlay([0, 0, 0], opacity);
+            }
+            DeathPhase::Dead => {
+                fb.overlay([0, 0, 0], 1.0);
+                // "YOU DIED" centered on screen
+                let text = "YOU DIED";
+                let tw = sprites::font::text_width(text);
+                let tx = (fw as i32 - tw) / 2;
+                let ty = (fh as i32) / 2 - 4;
+                sprites::font::render_text(fb, text, tx, ty, [200, 30, 30]);
+
+                // "PRESS Z TO RESTART" below
+                let text2 = "PRESS ATTACK";
+                let tw2 = sprites::font::text_width(text2);
+                let tx2 = (fw as i32 - tw2) / 2;
+                sprites::font::render_text(fb, text2, tx2, ty + 8, [150, 150, 150]);
+                return;
+            }
+            _ => {}
+        }
+
         // --- HUD ---
-        let bar_h = 4;
+        let bar_h = 8;
         for y in 0..bar_h.min(fh) {
             for x in 0..fw {
                 fb.set_pixel(x, y, [0, 0, 0]);
             }
         }
 
-        let fps_pixels = (info.fps as usize).min(fw);
-        for x in 0..fps_pixels {
+        // Health hearts at top-left
+        hud::render_hearts(fb, self.player.hp, self.player.max_hp, 2, 1);
+
+        // Performance bars (right-aligned, smaller)
+        let bar_w = fw / 3;
+        let bar_x = fw - bar_w;
+
+        let fps_pixels = ((info.fps as usize) * bar_w) / 60;
+        for x in bar_x..bar_x + fps_pixels.min(bar_w) {
             fb.set_pixel(x, 0, color::GREEN);
         }
 
         if info.cells_total > 0 {
-            let ratio_pixels = (info.cells_redrawn * fw) / info.cells_total.max(1);
-            for x in 0..ratio_pixels.min(fw) {
+            let ratio_pixels = (info.cells_redrawn * bar_w) / info.cells_total.max(1);
+            for x in bar_x..bar_x + ratio_pixels.min(bar_w) {
                 fb.set_pixel(x, 1, [255, 255, 0]);
             }
         }
 
         let frame_budget_us: u64 = 33_000;
         let draw_timing_bar = |fb: &mut FrameBuffer, y: usize, us: u64, c: Color| {
-            let pixels = ((us as usize * fw) / frame_budget_us as usize).min(fw);
-            for x in 0..pixels {
+            let pixels = ((us as usize * bar_w) / frame_budget_us as usize).min(bar_w);
+            for x in bar_x..bar_x + pixels {
                 fb.set_pixel(x, y, c);
             }
         };
@@ -514,6 +701,30 @@ impl Game for CryptfallGame {
 }
 
 impl CryptfallGame {
+    fn restart(&mut self) {
+        self.player = Player::new(120.0, 88.0);
+        self.enemies = vec![
+            Enemy::new_skeleton(160.0, 120.0, 11111),
+            Enemy::new_skeleton(120.0, 150.0, 22222),
+            Enemy::new_skeleton(60.0, 100.0, 33333),
+            Enemy::new_ghost(180.0, 80.0, 44444),
+            Enemy::new_ghost(100.0, 60.0, 55555),
+        ];
+        self.projectiles.clear();
+        self.particles.clear();
+        self.damage_numbers.clear();
+        self.flash_timer = 0;
+        self.hit_pause_frames = 0;
+        self.death_phase = DeathPhase::Alive;
+        self.death_timer = 0.0;
+        self.idle_timer = 0.0;
+        self.demo = None;
+
+        let (cx, cy) = self.player.center();
+        self.camera.follow(cx, cy);
+        self.camera.snap();
+    }
+
     fn render_debug_hitboxes(&self, fb: &mut FrameBuffer, cam_x: i32, cam_y: i32) {
         let phb = self.player.world_hurtbox();
         draw_aabb_outline(fb, &phb, cam_x, cam_y, color::GREEN);

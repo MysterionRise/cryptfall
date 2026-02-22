@@ -223,12 +223,10 @@ impl FrameBuffer {
     /// `opacity` ranges from 0.0 (no change) to 1.0 (fully replaced by color).
     pub fn overlay(&mut self, color: Color, opacity: f32) {
         let opacity = opacity.clamp(0.0, 1.0);
-        for pixel in &mut self.pixels {
-            if let Some(ref mut c) = pixel {
-                c[0] = (c[0] as f32 + (color[0] as f32 - c[0] as f32) * opacity) as u8;
-                c[1] = (c[1] as f32 + (color[1] as f32 - c[1] as f32) * opacity) as u8;
-                c[2] = (c[2] as f32 + (color[2] as f32 - c[2] as f32) * opacity) as u8;
-            }
+        for c in self.pixels.iter_mut().flatten() {
+            c[0] = (c[0] as f32 + (color[0] as f32 - c[0] as f32) * opacity) as u8;
+            c[1] = (c[1] as f32 + (color[1] as f32 - c[1] as f32) * opacity) as u8;
+            c[2] = (c[2] as f32 + (color[2] as f32 - c[2] as f32) * opacity) as u8;
         }
     }
 }

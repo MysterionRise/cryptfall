@@ -1,6 +1,7 @@
 use engine::color::Color;
 use engine::FrameBuffer;
 
+use crate::sprites::effects::{HEART_EMPTY, HEART_FULL};
 use crate::sprites::font::render_digit;
 
 pub struct DamageNumber {
@@ -69,4 +70,13 @@ fn get_digits(mut value: i32) -> Vec<u8> {
     }
     digits.reverse();
     digits
+}
+
+/// Render health hearts at screen position. Hearts are 5x5 with 1px spacing.
+pub fn render_hearts(fb: &mut FrameBuffer, hp: i32, max_hp: i32, sx: i32, sy: i32) {
+    for i in 0..max_hp {
+        let x = sx + i * 6;
+        let sprite = if i < hp { &HEART_FULL } else { &HEART_EMPTY };
+        fb.blit_sprite(sprite, x, sy);
+    }
 }
