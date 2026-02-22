@@ -1,6 +1,7 @@
 mod enemies;
 mod hud;
 mod player;
+mod projectile;
 mod sprites;
 mod tiles;
 
@@ -96,6 +97,43 @@ const DUST_PUFF_CONFIG: BurstConfig = BurstConfig {
     base_angle: -std::f32::consts::FRAC_PI_2,
 };
 
+const PROJ_TRAIL_COLORS: &[Color] = &[[60, 200, 255], [30, 100, 180], [100, 220, 255]];
+
+const PROJ_TRAIL_CONFIG: BurstConfig = BurstConfig {
+    count_min: 1,
+    count_max: 2,
+    speed_min: 3.0,
+    speed_max: 10.0,
+    lifetime_min: 0.1,
+    lifetime_max: 0.2,
+    colors: PROJ_TRAIL_COLORS,
+    gravity: 0.0,
+    friction: 0.8,
+    angle_spread: std::f32::consts::TAU,
+    base_angle: 0.0,
+};
+
+const PROJ_IMPACT_COLORS: &[Color] = &[
+    [60, 200, 255],
+    [100, 220, 255],
+    [200, 240, 255],
+    [30, 100, 180],
+];
+
+const PROJ_IMPACT_CONFIG: BurstConfig = BurstConfig {
+    count_min: 6,
+    count_max: 10,
+    speed_min: 20.0,
+    speed_max: 60.0,
+    lifetime_min: 0.15,
+    lifetime_max: 0.3,
+    colors: PROJ_IMPACT_COLORS,
+    gravity: 0.0,
+    friction: 0.85,
+    angle_spread: std::f32::consts::TAU,
+    base_angle: 0.0,
+};
+
 struct DemoState {
     timer: f32,
     dx: f32,
@@ -163,6 +201,7 @@ const FRAC_1_SQRT_2: f32 = std::f32::consts::FRAC_1_SQRT_2;
 struct CryptfallGame {
     player: Player,
     enemies: Vec<Enemy>,
+    projectiles: projectile::ProjectileSystem,
     tilemap: TileMap,
     camera: Camera,
     particles: ParticleSystem,
@@ -186,17 +225,17 @@ impl CryptfallGame {
         camera.clamp_to_bounds(tilemap.pixel_width() as f32, tilemap.pixel_height() as f32);
 
         let enemies = vec![
-            Enemy::new_slime(80.0, 60.0),
             Enemy::new_skeleton(160.0, 120.0, 11111),
             Enemy::new_skeleton(120.0, 150.0, 22222),
             Enemy::new_skeleton(60.0, 100.0, 33333),
-            Enemy::new_skeleton(180.0, 80.0, 44444),
-            Enemy::new_skeleton(100.0, 60.0, 55555),
+            Enemy::new_ghost(180.0, 80.0, 44444),
+            Enemy::new_ghost(100.0, 60.0, 55555),
         ];
 
         Self {
             player,
             enemies,
+            projectiles: projectile::ProjectileSystem::new(),
             tilemap,
             camera,
             particles: ParticleSystem::new(),
@@ -352,6 +391,27 @@ impl Game for CryptfallGame {
             enemy.update(dt, &self.tilemap, pcx, pcy);
         }
 
+        // Spawn projectiles from ghost enemies that fired
+        for enemy in &self.enemies {
+            if enemy.fired_projectile {
+                let (ex, ey) = enemy.center();
+                self.projectiles
+                    .spawn(ex - 1.5, ey - 1.5, enemy.aim_dir_x, enemy.aim_dir_y);
+            }
+        }
+
+        // Update projectiles
+        let (trail_pos, impact_pos) = self.projectiles.update(dt_f32, &self.tilemap);
+        for (tx, ty) in trail_pos {
+            self.particles.burst(tx, ty, &PROJ_TRAIL_CONFIG);
+        }
+        for (ix, iy) in impact_pos {
+            self.particles.burst(ix, iy, &PROJ_IMPACT_CONFIG);
+        }
+
+        // Check projectile-player collision (damage applied in session 2.6)
+        let _player_hits = self.projectiles.check_player_hits(&self.player.world_hurtbox());
+
         // Update particles
         self.particles.update(dt_f32);
 
@@ -404,6 +464,9 @@ impl Game for CryptfallGame {
         } else {
             self.player.render(fb, alpha, cam_x, cam_y);
         }
+
+        // --- Draw projectiles ---
+        self.projectiles.render(fb, cam_x, cam_y);
 
         // --- Draw particles ---
         self.particles.render(fb, cam_x, cam_y);

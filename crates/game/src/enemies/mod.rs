@@ -1,3 +1,4 @@
+pub mod ghost;
 pub mod skeleton;
 
 use engine::animation::AnimationPlayer;
@@ -7,6 +8,7 @@ use engine::types::Transform;
 use engine::FrameBuffer;
 
 use crate::sprites;
+use ghost::{GhostAI, GhostOutput};
 use skeleton::{SkeletonAI, SkeletonOutput};
 
 const FLASH_DURATION: f32 = 0.12;
@@ -21,17 +23,31 @@ const SLIME_COLLISION_H: f32 = 4.0;
 const SLIME_COLLISION_OFFSET_X: f32 = 2.0;
 const SLIME_COLLISION_OFFSET_Y: f32 = 6.0;
 
-// --- Skeleton constants (10x14 sprite, same as player) ---
+// --- Skeleton constants (10x14 sprite) ---
 const SKEL_HURTBOX: AABB = AABB::new(2.0, 3.0, 6.0, 8.0);
 const SKEL_COLLISION_W: f32 = 8.0;
 const SKEL_COLLISION_H: f32 = 4.0;
 const SKEL_COLLISION_OFFSET_X: f32 = 1.0;
 const SKEL_COLLISION_OFFSET_Y: f32 = 10.0;
 
+// --- Ghost constants (10x12 sprite) ---
+const GHOST_HURTBOX: AABB = AABB::new(2.0, 2.0, 6.0, 7.0);
+const GHOST_COLLISION_W: f32 = 6.0;
+const GHOST_COLLISION_H: f32 = 4.0;
+const GHOST_COLLISION_OFFSET_X: f32 = 2.0;
+const GHOST_COLLISION_OFFSET_Y: f32 = 6.0;
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum EnemyType {
     Slime,
     Skeleton,
+    Ghost,
+}
+
+enum AIState {
+    None,
+    Skeleton(SkeletonAI),
+    Ghost(GhostAI),
 }
 
 pub struct Enemy {
@@ -46,8 +62,12 @@ pub struct Enemy {
     pub knockback_vx: f32,
     pub knockback_vy: f32,
     pub stagger_timer: f32,
-    /// Skeleton-specific AI state
-    skeleton_ai: Option<SkeletonAI>,
+    ai: AIState,
+    /// Set to true on the frame ghost fires (consumed by main loop)
+    pub fired_projectile: bool,
+    /// Cached aim direction for projectile spawning
+    pub aim_dir_x: f32,
+    pub aim_dir_y: f32,
 }
 
 impl Enemy {
@@ -64,7 +84,10 @@ impl Enemy {
             knockback_vx: 0.0,
             knockback_vy: 0.0,
             stagger_timer: 0.0,
-            skeleton_ai: None,
+            ai: AIState::None,
+            fired_projectile: false,
+            aim_dir_x: 0.0,
+            aim_dir_y: 0.0,
         }
     }
 
@@ -81,7 +104,47 @@ impl Enemy {
             knockback_vx: 0.0,
             knockback_vy: 0.0,
             stagger_timer: 0.0,
-            skeleton_ai: Some(SkeletonAI::new(seed)),
+            ai: AIState::Skeleton(SkeletonAI::new(seed)),
+            fired_projectile: false,
+            aim_dir_x: 0.0,
+            aim_dir_y: 0.0,
+        }
+    }
+
+    pub fn new_ghost(x: f32, y: f32, seed: u32) -> Self {
+        Self {
+            transform: Transform::new(x, y),
+            animation: AnimationPlayer::new(&sprites::GHOST_IDLE_ANIM),
+            facing_right: true,
+            hp: 2,
+            alive: true,
+            hit_this_attack: false,
+            enemy_type: EnemyType::Ghost,
+            flash_timer: 0.0,
+            knockback_vx: 0.0,
+            knockback_vy: 0.0,
+            stagger_timer: 0.0,
+            ai: AIState::Ghost(GhostAI::new(seed)),
+            fired_projectile: false,
+            aim_dir_x: 0.0,
+            aim_dir_y: 0.0,
+        }
+    }
+
+    pub fn center(&self) -> (f32, f32) {
+        match self.enemy_type {
+            EnemyType::Slime => (
+                self.transform.position.x + 5.0,
+                self.transform.position.y + 5.0,
+            ),
+            EnemyType::Skeleton => (
+                self.transform.position.x + 5.0,
+                self.transform.position.y + 7.0,
+            ),
+            EnemyType::Ghost => (
+                self.transform.position.x + 5.0,
+                self.transform.position.y + 6.0,
+            ),
         }
     }
 
@@ -89,6 +152,7 @@ impl Enemy {
         let hb = match self.enemy_type {
             EnemyType::Slime => SLIME_HURTBOX,
             EnemyType::Skeleton => SKEL_HURTBOX,
+            EnemyType::Ghost => GHOST_HURTBOX,
         };
         hb.at(self.transform.position.x, self.transform.position.y)
     }
@@ -107,6 +171,12 @@ impl Enemy {
                 SKEL_COLLISION_W,
                 SKEL_COLLISION_H,
             ),
+            EnemyType::Ghost => (
+                GHOST_COLLISION_OFFSET_X,
+                GHOST_COLLISION_OFFSET_Y,
+                GHOST_COLLISION_W,
+                GHOST_COLLISION_H,
+            ),
         }
     }
 
@@ -122,13 +192,14 @@ impl Enemy {
             match self.enemy_type {
                 EnemyType::Slime => self.animation.play(&sprites::ENEMY_DEATH_ANIM),
                 EnemyType::Skeleton => self.animation.play(&sprites::SKEL_DEATH_ANIM),
+                EnemyType::Ghost => self.animation.play(&sprites::GHOST_DEATH_ANIM),
             }
         }
     }
 
     /// Returns the skeleton's attack hitbox if it has one active, else None.
     pub fn attack_hitbox(&self) -> Option<AABB> {
-        if let Some(ref ai) = self.skeleton_ai {
+        if let AIState::Skeleton(ref ai) = self.ai {
             ai.attack_hitbox(
                 self.transform.position.x,
                 self.transform.position.y,
@@ -142,6 +213,8 @@ impl Enemy {
     pub fn update(&mut self, dt: f64, tilemap: &TileMap, player_x: f32, player_y: f32) {
         self.transform.commit();
         let dt_f32 = dt as f32;
+
+        self.fired_projectile = false;
 
         if self.flash_timer > 0.0 {
             self.flash_timer -= dt_f32;
@@ -177,60 +250,89 @@ impl Enemy {
             }
         }
 
-        // Run skeleton AI
-        if let Some(ref mut ai) = self.skeleton_ai {
-            if self.alive {
-                let out: SkeletonOutput = ai.update(
-                    dt_f32,
-                    self.transform.position.x + 5.0,
-                    self.transform.position.y + 7.0,
-                    player_x,
-                    player_y,
-                    self.stagger_timer > 0.0,
-                    self.alive,
-                );
+        // Type-specific AI
+        match &mut self.ai {
+            AIState::Skeleton(ai) => {
+                if self.alive {
+                    let (cx, cy) = (
+                        self.transform.position.x + 5.0,
+                        self.transform.position.y + 7.0,
+                    );
+                    let out: SkeletonOutput = ai.update(
+                        dt_f32, cx, cy, player_x, player_y,
+                        self.stagger_timer > 0.0,
+                        self.alive,
+                    );
 
-                // Apply AI movement with wall collision
-                if (out.move_dx != 0.0 || out.move_dy != 0.0) && self.stagger_timer <= 0.0 {
-                    let try_x = self.transform.position.x + out.move_dx;
-                    if !tilemap.collides(
-                        try_x + col_ox,
-                        self.transform.position.y + col_oy,
-                        col_w,
-                        col_h,
-                    ) {
-                        self.transform.position.x = try_x;
+                    if (out.move_dx != 0.0 || out.move_dy != 0.0) && self.stagger_timer <= 0.0 {
+                        let try_x = self.transform.position.x + out.move_dx;
+                        if !tilemap.collides(try_x + col_ox, self.transform.position.y + col_oy, col_w, col_h) {
+                            self.transform.position.x = try_x;
+                        }
+                        let try_y = self.transform.position.y + out.move_dy;
+                        if !tilemap.collides(self.transform.position.x + col_ox, try_y + col_oy, col_w, col_h) {
+                            self.transform.position.y = try_y;
+                        }
                     }
 
-                    let try_y = self.transform.position.y + out.move_dy;
-                    if !tilemap.collides(
-                        self.transform.position.x + col_ox,
-                        try_y + col_oy,
-                        col_w,
-                        col_h,
-                    ) {
-                        self.transform.position.y = try_y;
+                    if out.move_dx != 0.0 || out.winding_up || out.attacking {
+                        self.facing_right = out.facing_right;
                     }
-                }
 
-                // Update facing
-                if out.move_dx != 0.0 || out.winding_up || out.attacking {
-                    self.facing_right = out.facing_right;
-                }
-
-                // Update animation based on AI state
-                if self.stagger_timer > 0.0 {
-                    self.animation.play(&sprites::SKEL_STAGGER_ANIM);
-                } else if out.attacking {
-                    self.animation.play(&sprites::SKEL_ATTACK_ANIM);
-                } else if out.winding_up {
-                    self.animation.play(&sprites::SKEL_WINDUP_ANIM);
-                } else if out.walking {
-                    self.animation.play(&sprites::SKEL_WALK_ANIM);
-                } else {
-                    self.animation.play(&sprites::SKEL_IDLE_ANIM);
+                    if self.stagger_timer > 0.0 {
+                        self.animation.play(&sprites::SKEL_STAGGER_ANIM);
+                    } else if out.attacking {
+                        self.animation.play(&sprites::SKEL_ATTACK_ANIM);
+                    } else if out.winding_up {
+                        self.animation.play(&sprites::SKEL_WINDUP_ANIM);
+                    } else if out.walking {
+                        self.animation.play(&sprites::SKEL_WALK_ANIM);
+                    } else {
+                        self.animation.play(&sprites::SKEL_IDLE_ANIM);
+                    }
                 }
             }
+            AIState::Ghost(ai) => {
+                if self.alive {
+                    let (cx, cy) = (
+                        self.transform.position.x + 5.0,
+                        self.transform.position.y + 6.0,
+                    );
+                    let out: GhostOutput = ai.update(
+                        dt_f32, cx, cy, player_x, player_y,
+                        self.stagger_timer > 0.0,
+                        self.alive,
+                    );
+
+                    if (out.move_dx != 0.0 || out.move_dy != 0.0) && self.stagger_timer <= 0.0 {
+                        let try_x = self.transform.position.x + out.move_dx;
+                        if !tilemap.collides(try_x + col_ox, self.transform.position.y + col_oy, col_w, col_h) {
+                            self.transform.position.x = try_x;
+                        }
+                        let try_y = self.transform.position.y + out.move_dy;
+                        if !tilemap.collides(self.transform.position.x + col_ox, try_y + col_oy, col_w, col_h) {
+                            self.transform.position.y = try_y;
+                        }
+                    }
+
+                    self.facing_right = out.facing_right;
+
+                    if out.fire_projectile {
+                        self.fired_projectile = true;
+                        self.aim_dir_x = ai.aim_dir_x;
+                        self.aim_dir_y = ai.aim_dir_y;
+                    }
+
+                    if self.stagger_timer > 0.0 {
+                        self.animation.play(&sprites::GHOST_STAGGER_ANIM);
+                    } else if out.aiming {
+                        self.animation.play(&sprites::GHOST_AIM_ANIM);
+                    } else {
+                        self.animation.play(&sprites::GHOST_IDLE_ANIM);
+                    }
+                }
+            }
+            AIState::None => {}
         }
 
         self.animation.set_flipped(!self.facing_right);
