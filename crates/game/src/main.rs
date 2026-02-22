@@ -1,10 +1,10 @@
-mod enemy;
+mod enemies;
 mod hud;
 mod player;
 mod sprites;
 mod tiles;
 
-use enemy::Enemy;
+use enemies::Enemy;
 use engine::{
     color, render_tilemap, BurstConfig, Camera, Color, FrameBuffer, FrameInfo, Game, GameKey,
     InputState, ParticleSystem, TileMap, TileType,
@@ -186,9 +186,12 @@ impl CryptfallGame {
         camera.clamp_to_bounds(tilemap.pixel_width() as f32, tilemap.pixel_height() as f32);
 
         let enemies = vec![
-            Enemy::new(80.0, 60.0),
-            Enemy::new(160.0, 120.0),
-            Enemy::new(120.0, 150.0),
+            Enemy::new_slime(80.0, 60.0),
+            Enemy::new_skeleton(160.0, 120.0, 11111),
+            Enemy::new_skeleton(120.0, 150.0, 22222),
+            Enemy::new_skeleton(60.0, 100.0, 33333),
+            Enemy::new_skeleton(180.0, 80.0, 44444),
+            Enemy::new_skeleton(100.0, 60.0, 55555),
         ];
 
         Self {
@@ -344,8 +347,9 @@ impl Game for CryptfallGame {
         }
 
         // Update all enemies
+        let (pcx, pcy) = self.player.center();
         for enemy in &mut self.enemies {
-            enemy.update(dt, &self.tilemap);
+            enemy.update(dt, &self.tilemap, pcx, pcy);
         }
 
         // Update particles
