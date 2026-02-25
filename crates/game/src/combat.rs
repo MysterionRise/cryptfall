@@ -82,6 +82,52 @@ const PLAYER_DEATH_BURST_CONFIG: BurstConfig = BurstConfig {
     base_angle: 0.0,
 };
 
+// --- Boss-specific particle configs ---
+
+const BOSS_DEATH_COLORS: &[Color] = &[
+    [255, 255, 255],
+    [255, 200, 100],
+    [255, 100, 50],
+    [200, 50, 30],
+    [255, 220, 50],
+    [200, 180, 150],
+];
+
+pub const BOSS_DEATH_BURST_CONFIG: BurstConfig = BurstConfig {
+    count_min: 30,
+    count_max: 40,
+    speed_min: 20.0,
+    speed_max: 120.0,
+    lifetime_min: 0.4,
+    lifetime_max: 1.2,
+    colors: BOSS_DEATH_COLORS,
+    gravity: 30.0,
+    friction: 0.92,
+    angle_spread: std::f32::consts::TAU,
+    base_angle: 0.0,
+};
+
+const BOSS_SLAM_COLORS: &[Color] = &[
+    [200, 180, 150],
+    [160, 140, 110],
+    [120, 100, 70],
+    [255, 200, 100],
+];
+
+pub const BOSS_SLAM_BURST_CONFIG: BurstConfig = BurstConfig {
+    count_min: 12,
+    count_max: 18,
+    speed_min: 30.0,
+    speed_max: 90.0,
+    lifetime_min: 0.2,
+    lifetime_max: 0.5,
+    colors: BOSS_SLAM_COLORS,
+    gravity: 50.0,
+    friction: 0.88,
+    angle_spread: std::f32::consts::TAU,
+    base_angle: 0.0,
+};
+
 pub const PROJ_TRAIL_COLORS: &[Color] = &[[60, 200, 255], [30, 100, 180], [100, 220, 255]];
 
 pub const PROJ_TRAIL_CONFIG: BurstConfig = BurstConfig {
@@ -202,9 +248,16 @@ pub fn check_enemy_attacks(
     let player_hurtbox = player.world_hurtbox();
     let (pcx, pcy) = player.center();
 
-    // Skeleton melee attacks
+    // Melee attacks (skeletons and boss)
     for enemy in enemies {
-        if !enemy.alive || enemy.enemy_type != EnemyType::Skeleton {
+        if !enemy.alive {
+            continue;
+        }
+        // Only check enemies with melee attacks
+        if !matches!(
+            enemy.enemy_type,
+            EnemyType::Skeleton | EnemyType::BoneKing
+        ) {
             continue;
         }
         if let Some(atk_hb) = enemy.attack_hitbox() {
@@ -213,7 +266,13 @@ pub fn check_enemy_attacks(
                 let dx = pcx - ecx;
                 let dy = pcy - ecy;
                 let len = (dx * dx + dy * dy).sqrt().max(0.01);
-                let died = player.take_damage(1, dx / len, dy / len);
+                // Boss deals 2 damage per hit
+                let dmg = if enemy.enemy_type == EnemyType::BoneKing {
+                    2
+                } else {
+                    1
+                };
+                let died = player.take_damage(dmg, dx / len, dy / len);
                 if died {
                     effects.hit_pause_frames = 8;
                     effects.camera_shake = 8.0;
@@ -224,7 +283,7 @@ pub fn check_enemy_attacks(
                     effects.camera_shake = 4.0;
                     particles.burst(pcx, pcy, &BLOOD_BURST_CONFIG);
                     damage_numbers.push(hud::DamageNumber::new(
-                        1,
+                        dmg,
                         pcx - 2.0,
                         pcy - 8.0,
                         [255, 80, 80],

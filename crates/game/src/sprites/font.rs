@@ -77,31 +77,66 @@ pub fn render_digit(fb: &mut FrameBuffer, digit: u8, sx: i32, sy: i32, color: Co
 
 // 3x5 pixel letter fonts for text rendering
 #[rustfmt::skip]
-const LETTER_FONTS: [(char, [bool; 15]); 16] = [
+const LETTER_FONTS: [(char, [bool; 15]); 24] = [
     ('A', [false,true,false, true,false,true, true,true,true, true,false,true, true,false,true]),
+    ('B', [true,true,false, true,false,true, true,true,false, true,false,true, true,true,false]),
     ('C', [false,true,true, true,false,false, true,false,false, true,false,false, false,true,true]),
     ('D', [true,true,false, true,false,true, true,false,true, true,false,true, true,true,false]),
     ('E', [true,true,true, true,false,false, true,true,false, true,false,false, true,true,true]),
+    ('F', [true,true,true, true,false,false, true,true,false, true,false,false, true,false,false]),
+    ('G', [false,true,true, true,false,false, true,false,true, true,false,true, false,true,true]),
+    ('H', [true,false,true, true,false,true, true,true,true, true,false,true, true,false,true]),
     ('I', [true,true,true, false,true,false, false,true,false, false,true,false, true,true,true]),
     ('K', [true,false,true, true,false,true, true,true,false, true,false,true, true,false,true]),
+    ('L', [true,false,false, true,false,false, true,false,false, true,false,false, true,true,true]),
+    ('M', [true,false,true, true,true,true, true,true,true, true,false,true, true,false,true]),
     ('N', [true,false,true, true,true,true, true,true,true, true,false,true, true,false,true]),
     ('O', [false,true,false, true,false,true, true,false,true, true,false,true, false,true,false]),
     ('P', [true,true,false, true,false,true, true,true,false, true,false,false, true,false,false]),
+    ('Q', [false,true,false, true,false,true, true,false,true, true,false,true, false,true,true]),
     ('R', [true,true,false, true,false,true, true,true,false, true,false,true, true,false,true]),
     ('S', [false,true,true, true,false,false, false,true,false, false,false,true, true,true,false]),
     ('T', [true,true,true, false,true,false, false,true,false, false,true,false, false,true,false]),
     ('U', [true,false,true, true,false,true, true,false,true, true,false,true, false,true,false]),
     ('V', [true,false,true, true,false,true, true,false,true, true,false,true, false,true,false]),
     ('W', [true,false,true, true,false,true, true,true,true, true,true,true, true,false,true]),
+    ('X', [true,false,true, true,false,true, false,true,false, true,false,true, true,false,true]),
     ('Y', [true,false,true, true,false,true, false,true,false, false,true,false, false,true,false]),
+];
+
+/// 3x5 dash/hyphen glyph.
+#[rustfmt::skip]
+const DASH_FONT: [bool; 15] = [
+    false,false,false,
+    false,false,false,
+    true,true,true,
+    false,false,false,
+    false,false,false,
+];
+
+/// 3x5 slash glyph.
+#[rustfmt::skip]
+const SLASH_FONT: [bool; 15] = [
+    false,false,true,
+    false,false,true,
+    false,true,false,
+    true,false,false,
+    true,false,false,
 ];
 
 fn char_font(c: char) -> Option<&'static [bool; 15]> {
     if c.is_ascii_digit() {
         return Some(&DIGIT_FONTS[(c as u8 - b'0') as usize]);
     }
+    if c == '-' {
+        return Some(&DASH_FONT);
+    }
+    if c == '/' {
+        return Some(&SLASH_FONT);
+    }
+    let upper = c.to_ascii_uppercase();
     for &(ch, ref font) in &LETTER_FONTS {
-        if ch == c {
+        if ch == upper {
             return Some(font);
         }
     }

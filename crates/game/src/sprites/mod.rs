@@ -1,7 +1,10 @@
+pub mod boss;
+pub mod doors;
 pub mod effects;
 mod enemy;
 pub mod font;
 mod ghost;
+pub mod pickups;
 mod player;
 mod skeleton;
 

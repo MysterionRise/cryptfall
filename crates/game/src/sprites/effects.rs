@@ -39,3 +39,20 @@ pub static HEART_EMPTY: SpriteData = SpriteData::new(5, 5, &[
     N, E, E, E, N,
     N, N, E, N, N,
 ]);
+
+// --- Spawn warning indicator: 7x7, red-orange ring on ground ---
+const O: Option<Color> = Some([255, 100, 30]); // outer orange
+const I: Option<Color> = Some([255, 60, 10]); // inner red-orange
+const F: Option<Color> = Some([80, 30, 10]); // dim fill center
+
+/// Red-orange warning ring that appears on the ground before enemies spawn.
+#[rustfmt::skip]
+pub static SPAWN_WARNING: SpriteData = SpriteData::new(7, 7, &[
+    N, N, O, O, O, N, N,
+    N, O, I, I, I, O, N,
+    O, I, F, F, F, I, O,
+    O, I, F, F, F, I, O,
+    O, I, F, F, F, I, O,
+    N, O, I, I, I, O, N,
+    N, N, O, O, O, N, N,
+]);

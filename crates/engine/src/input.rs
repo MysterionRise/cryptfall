@@ -15,6 +15,7 @@ pub enum GameKey {
     Attack,
     Dash,
     Pause,
+    Map,
     Quit,
 }
 
@@ -160,6 +161,7 @@ fn map_key(code: KeyCode) -> Option<GameKey> {
         KeyCode::Char('z') | KeyCode::Enter => Some(GameKey::Attack),
         KeyCode::Char('x') | KeyCode::Char(' ') => Some(GameKey::Dash),
         KeyCode::Esc => Some(GameKey::Pause),
+        KeyCode::Tab => Some(GameKey::Map),
         KeyCode::Char('q') => Some(GameKey::Quit),
         _ => None,
     }

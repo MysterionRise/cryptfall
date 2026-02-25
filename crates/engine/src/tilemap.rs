@@ -4,12 +4,13 @@ use crate::sprite::SpriteData;
 pub const TILE_SIZE: usize = 8;
 
 /// A tile in the map.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TileType {
     Floor,
     Wall,
     WallTop,
-    Door,
+    DoorClosed,
+    DoorOpen,
     Pit,
 }
 
@@ -43,9 +44,12 @@ impl TileMap {
         }
     }
 
-    /// Wall and WallTop are solid.
+    /// Wall, WallTop, and DoorClosed are solid.
     pub fn is_solid(&self, tx: usize, ty: usize) -> bool {
-        matches!(self.get(tx, ty), TileType::Wall | TileType::WallTop)
+        matches!(
+            self.get(tx, ty),
+            TileType::Wall | TileType::WallTop | TileType::DoorClosed
+        )
     }
 
     /// Check if a pixel-space rectangle collides with any solid tile.

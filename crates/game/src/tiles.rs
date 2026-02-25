@@ -16,10 +16,14 @@ const F: Option<Color> = Some([70, 65, 55]);
 const G: Option<Color> = Some([80, 75, 65]);
 const H: Option<Color> = Some([70, 65, 55]);
 
-// Door colors — warm wood
+// DoorClosed colors — warm wood
 const J: Option<Color> = Some([120, 80, 40]);
 const K: Option<Color> = Some([100, 65, 30]);
 const L: Option<Color> = Some([140, 95, 50]);
+
+// DoorOpen colors — darker floor tones (open doorway)
+const M: Option<Color> = Some([30, 28, 32]);
+const N: Option<Color> = Some([25, 23, 28]);
 
 // Pit colors — dark void
 const P: Option<Color> = Some([15, 10, 20]);
@@ -76,9 +80,9 @@ static WALL_TOP: SpriteData = SpriteData::new(
     ],
 );
 
-/// Door: vertical wood planks.
+/// Closed door: vertical wood planks (solid, blocks movement).
 #[rustfmt::skip]
-static DOOR: SpriteData = SpriteData::new(
+static DOOR_CLOSED: SpriteData = SpriteData::new(
     8,
     8,
     &[
@@ -90,6 +94,23 @@ static DOOR: SpriteData = SpriteData::new(
         J, K, J, J, L, J, K, J,
         J, K, J, J, L, J, K, J,
         L, L, L, L, L, L, L, L,
+    ],
+);
+
+/// Open door: dark doorway (passable).
+#[rustfmt::skip]
+static DOOR_OPEN: SpriteData = SpriteData::new(
+    8,
+    8,
+    &[
+        M, N, M, M, N, M, N, M,
+        N, M, N, M, M, N, M, M,
+        M, M, M, N, M, M, N, N,
+        N, M, N, M, N, M, M, M,
+        M, N, M, M, M, N, M, N,
+        M, M, N, M, N, M, N, M,
+        N, M, M, N, M, M, M, N,
+        M, N, M, M, N, M, N, M,
     ],
 );
 
@@ -116,7 +137,8 @@ pub fn tile_sprite(tile: TileType) -> &'static SpriteData {
         TileType::Floor => &FLOOR,
         TileType::Wall => &WALL,
         TileType::WallTop => &WALL_TOP,
-        TileType::Door => &DOOR,
+        TileType::DoorClosed => &DOOR_CLOSED,
+        TileType::DoorOpen => &DOOR_OPEN,
         TileType::Pit => &PIT,
     }
 }
