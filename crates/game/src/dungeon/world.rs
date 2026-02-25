@@ -250,6 +250,7 @@ impl DungeonWorld {
     }
 
     /// Regenerate the floor (for restart on death).
+    #[allow(dead_code)] // Will be used for death-restart flow in dungeon traversal
     pub fn reset(&mut self) {
         self.floor = generate_floor(self.floor_number, self.seed);
         self.current_room_index = 0;

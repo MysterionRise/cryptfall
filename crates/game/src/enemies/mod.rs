@@ -14,7 +14,6 @@ use ghost::{GhostAI, GhostOutput};
 use skeleton::{SkeletonAI, SkeletonOutput};
 
 const FLASH_DURATION: f32 = 0.12;
-const KNOCKBACK_SPEED: f32 = 120.0;
 const KNOCKBACK_FRICTION: f32 = 0.85;
 const STAGGER_DURATION: f32 = 0.2;
 
@@ -287,7 +286,7 @@ impl Enemy {
         }
     }
 
-    pub fn take_damage(&mut self, dmg: i32, kb_dir_x: f32, kb_dir_y: f32) {
+    pub fn take_damage_with_knockback(&mut self, dmg: i32, kb_dir_x: f32, kb_dir_y: f32, kb_force: f32) {
         // Boss invulnerability check
         if let AIState::BoneKing(ref ai) = self.ai {
             if matches!(
@@ -303,12 +302,12 @@ impl Enemy {
 
         // Boss has reduced knockback
         if self.enemy_type == EnemyType::BoneKing {
-            self.knockback_vx = kb_dir_x * KNOCKBACK_SPEED * 0.3;
-            self.knockback_vy = kb_dir_y * KNOCKBACK_SPEED * 0.3;
+            self.knockback_vx = kb_dir_x * kb_force * 0.3;
+            self.knockback_vy = kb_dir_y * kb_force * 0.3;
             self.stagger_timer = STAGGER_DURATION * 0.5;
         } else {
-            self.knockback_vx = kb_dir_x * KNOCKBACK_SPEED;
-            self.knockback_vy = kb_dir_y * KNOCKBACK_SPEED;
+            self.knockback_vx = kb_dir_x * kb_force;
+            self.knockback_vy = kb_dir_y * kb_force;
             self.stagger_timer = STAGGER_DURATION;
         }
 

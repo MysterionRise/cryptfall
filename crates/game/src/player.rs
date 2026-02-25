@@ -6,6 +6,7 @@ use engine::types::Transform;
 use engine::{Color, FrameBuffer};
 
 use crate::sprites;
+use crate::weapons::{self, WeaponDef, WeaponId};
 
 const PLAYER_SPEED: f32 = 60.0; // pixels per second
 const DASH_SPEED: f32 = 200.0; // pixels per second
@@ -17,11 +18,7 @@ const COLLISION_H: f32 = 4.0;
 const COLLISION_OFFSET_X: f32 = 1.0; // (10 - 8) / 2
 const COLLISION_OFFSET_Y: f32 = 10.0; // 14 - 4
 
-const ATTACK_COOLDOWN: f32 = 0.3;
-const ATTACK_ACTIVE_FRAME: usize = 2;
 const PLAYER_HURTBOX: AABB = AABB::new(2.0, 3.0, 6.0, 8.0);
-const ATTACK_HITBOX_RIGHT: AABB = AABB::new(8.0, 3.0, 10.0, 8.0);
-const ATTACK_HITBOX_LEFT: AABB = AABB::new(-10.0, 3.0, 10.0, 8.0);
 const PLAYER_KNOCKBACK_SPEED: f32 = 100.0;
 const PLAYER_KNOCKBACK_FRICTION: f32 = 0.85;
 const DAMAGE_INVINCIBILITY: f32 = 1.0;
@@ -50,6 +47,7 @@ pub struct Player {
     pub max_hp: i32,
     knockback_vx: f32,
     knockback_vy: f32,
+    weapon: &'static WeaponDef,
 }
 
 impl Player {
@@ -69,7 +67,16 @@ impl Player {
             max_hp: 5,
             knockback_vx: 0.0,
             knockback_vy: 0.0,
+            weapon: weapons::get_weapon(WeaponId::Sword),
         }
+    }
+
+    pub fn weapon(&self) -> &'static WeaponDef {
+        self.weapon
+    }
+
+    pub fn equip_weapon(&mut self, id: WeaponId) {
+        self.weapon = weapons::get_weapon(id);
     }
 
     /// Player center in world pixels (for camera following).
@@ -220,7 +227,7 @@ impl Player {
                 // Attack takes priority over dash (only if cooldown expired)
                 if attack && self.attack_cooldown <= 0.0 {
                     self.state = PlayerState::Attacking;
-                    self.attack_cooldown = ATTACK_COOLDOWN;
+                    self.attack_cooldown = self.weapon.attack_cooldown;
                     self.animation.play(&sprites::ATTACK_ANIM);
                     (0.0, 0.0)
                 } else if dash && (dx != 0.0 || dy != 0.0) {
@@ -249,8 +256,10 @@ impl Player {
         self.animation.update(dt);
 
         // Track whether the attack hitbox is active this frame
+        let frame = self.animation.current_frame();
         self.attack_active = matches!(self.state, PlayerState::Attacking)
-            && self.animation.current_frame() == ATTACK_ACTIVE_FRAME;
+            && frame >= self.weapon.active_frame_start
+            && frame <= self.weapon.active_frame_end;
     }
 
     /// Returns the world-space attack hitbox, only when the active frame is live.
@@ -260,10 +269,14 @@ impl Player {
         }
         let px = self.transform.position.x;
         let py = self.transform.position.y;
+        let w = self.weapon.hitbox_w;
+        let h = self.weapon.hitbox_h;
+        let ox = self.weapon.hitbox_offset_x;
+        let oy = self.weapon.hitbox_offset_y;
         if self.facing_right {
-            Some(ATTACK_HITBOX_RIGHT.at(px, py))
+            Some(AABB::new(ox, oy, w, h).at(px, py))
         } else {
-            Some(ATTACK_HITBOX_LEFT.at(px, py))
+            Some(AABB::new(-ox - w, oy, w, h).at(px, py))
         }
     }
 

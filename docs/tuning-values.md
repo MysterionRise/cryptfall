@@ -28,7 +28,6 @@ All gameplay constants organized by category. Adjust these to rebalance the game
 | Constant | Value | Description | File |
 |----------|-------|-------------|------|
 | FLASH_DURATION | 0.12 | White flash duration on hit in seconds | enemies/mod.rs |
-| KNOCKBACK_SPEED | 120.0 | Initial knockback velocity on enemy hit | enemies/mod.rs |
 | KNOCKBACK_FRICTION | 0.85 | Knockback decay per frame | enemies/mod.rs |
 | STAGGER_DURATION | 0.2 | Stagger lock duration on hit in seconds | enemies/mod.rs |
 | Slime HP | 3 | Slime starting hit points | enemies/mod.rs |
@@ -113,3 +112,89 @@ All gameplay constants organized by category. Adjust these to rebalance the game
 | Camera shake (player death) | 8.0 | Shake intensity on player death | combat.rs |
 | Camera shake (attack swing) | 3.0 | Shake intensity on attack initiation | main.rs |
 | Camera shake (dash) | 6.0 | Shake intensity on dash initiation | main.rs |
+
+## Weapons (Phase 4)
+
+| Weapon | Damage | Cooldown | Hitbox (W x H) | Offset (X, Y) | Active Frames | Knockback | Speed | Range |
+|--------|--------|----------|----------------|----------------|---------------|-----------|-------|-------|
+| Sword | 2 | 0.35s | 12 x 8 | (8, 3) | 2-3 | 60.0 | Normal | Medium |
+| Spear | 3 | 0.50s | 18 x 4 | (10, 5) | 2-3 | 80.0 | Slow | Long |
+| Daggers | 1 | 0.15s | 6 x 10 | (5, 2) | 1-2 | 30.0 | Fast | Short |
+
+## Boons (Phase 4)
+
+### Offense Boons
+
+| Boon | Rarity | Stackable | Effect | File |
+|------|--------|-----------|--------|------|
+| Sharpened Blade | Common | Yes | +1 attack damage per stack | boons/effects.rs |
+| Berserker's Rage | Rare | No | +25% damage multiplier | boons/effects.rs |
+| Swift Strikes | Rare | No | 30% faster attack speed (0.7x cooldown) | boons/effects.rs |
+| Killing Blow | Rare | No | Enemies explode on death for 2 damage | boons/effects.rs |
+| Chain Lightning | Legendary | No | Attacks chain to 2 nearby enemies | boons/effects.rs |
+| Projectile Slash | Legendary | No | Attacks launch a projectile | boons/effects.rs |
+| Critical Edge | Rare | No | 20% chance for double damage | boons/effects.rs |
+| Fury | Legendary | No | +5% damage per kill this room | boons/effects.rs |
+
+### Defense Boons
+
+| Boon | Rarity | Stackable | Effect | File |
+|------|--------|-----------|--------|------|
+| Tough Skin | Common | Yes | +1 max HP per stack | boons/effects.rs |
+| Iron Shield | Rare | No | Block 2 hits per floor | boons/effects.rs |
+| Life Steal | Rare | No | Heal 15% of damage dealt | boons/effects.rs |
+| Vampiric Touch | Common | No | 10% chance to heal on hit | boons/effects.rs |
+| Retaliation | Common | No | Deal 1 damage to attackers | boons/effects.rs |
+| Second Wind | Legendary | No | Survive a killing blow once per floor | boons/effects.rs |
+
+### Mobility Boons
+
+| Boon | Rarity | Stackable | Effect | File |
+|------|--------|-----------|--------|------|
+| Swift Feet | Common | Yes | +20% move speed per stack | boons/effects.rs |
+| Phantom Dash | Rare | No | +40% dash distance | boons/effects.rs |
+| Shadow Step | Rare | No | 50% reduced dash cooldown | boons/effects.rs |
+| Dash Strike | Rare | No | Deal 2 damage on dash | boons/effects.rs |
+
+### Special Boons
+
+| Boon | Rarity | Stackable | Effect | File |
+|------|--------|-----------|--------|------|
+| Gold Magnet | Common | No | +50% gold earned | boons/effects.rs |
+| Lucky | Rare | No | Better boon rarity odds | boons/effects.rs |
+| Treasure Sense | Common | No | Reveal treasure rooms on minimap | boons/effects.rs |
+| Death's Bargain | Legendary | No | +3 damage but reduce max HP to 1 | boons/effects.rs |
+
+## Boon Selection Weights (Phase 4)
+
+| Rarity | Normal Weight | Lucky Weight | File |
+|--------|-------------|-------------|------|
+| Common | 60 | 40 | boons/selection.rs |
+| Rare | 30 | 40 | boons/selection.rs |
+| Legendary | 10 | 20 | boons/selection.rs |
+
+Boon offered every 2 combat rooms cleared. 3 options per selection. Category diversity enforced on 3rd pick.
+
+## Gold Economy (Phase 4)
+
+| Constant | Value | Description | File |
+|----------|-------|-------------|------|
+| GOLD_SKELETON | 2 | Gold dropped by skeletons | run_state.rs |
+| GOLD_GHOST | 3 | Gold dropped by ghosts | run_state.rs |
+| GOLD_BONE_KING | 25 | Gold dropped by boss | run_state.rs |
+| GOLD_ROOM_CLEAR_BONUS | 5 | Bonus gold on room clear | run_state.rs |
+
+## Permanent Upgrades (Phase 4)
+
+| Upgrade | Cost | Effect | Max Level |
+|---------|------|--------|-----------|
+| Vitality I | 30G | +1 Max HP | 1 |
+| Vitality II | 60G | +1 Max HP | 1 |
+| Vitality III | 120G | +1 Max HP | 1 |
+| Strength I | 50G | +1 Damage | 1 |
+| Strength II | 100G | +1 Damage | 1 |
+| Twin Dash | 80G | 2 dash charges | 1 |
+| Boon Reroll | 40G | +1 reroll per run | 1 |
+| Boon Reroll+ | 80G | +1 reroll per run | 1 |
+
+Save file: `~/.cryptfall/save.json` (JSON, auto-created)

@@ -188,6 +188,10 @@ pub fn check_player_attacks(
         None => return effects,
     };
 
+    let weapon = player.weapon();
+    let dmg = weapon.base_damage;
+    let kb_force = weapon.knockback_force;
+
     let (pcx, pcy) = player.center();
     for enemy in enemies.iter_mut() {
         if !enemy.alive || enemy.hit_this_attack {
@@ -201,7 +205,7 @@ pub fn check_player_attacks(
             let len = (dx * dx + dy * dy).sqrt().max(0.01);
 
             let was_alive = enemy.alive;
-            enemy.take_damage(1, dx / len, dy / len);
+            enemy.take_damage_with_knockback(dmg, dx / len, dy / len, kb_force);
             enemy.hit_this_attack = true;
 
             particles.burst(ecx, ecy, &HIT_SPARK_CONFIG);
@@ -212,7 +216,7 @@ pub fn check_player_attacks(
                 effects.camera_shake = 5.0;
                 particles.burst(ecx, ecy, &DEATH_BURST_CONFIG);
                 damage_numbers.push(hud::DamageNumber::new(
-                    1,
+                    dmg,
                     ecx - 2.0,
                     ecy - 8.0,
                     [255, 80, 80],
@@ -222,7 +226,7 @@ pub fn check_player_attacks(
                 effects.hit_pause_frames = 3;
                 effects.camera_shake = 2.5;
                 damage_numbers.push(hud::DamageNumber::new(
-                    1,
+                    dmg,
                     ecx - 2.0,
                     ecy - 8.0,
                     [255, 255, 100],
